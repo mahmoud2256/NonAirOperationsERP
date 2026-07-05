@@ -729,14 +729,34 @@ if not st.session_state.logged_in:
     show_login()
 else:
     with st.sidebar:
+
+        # Logo
         try:
-            st.image("logo.png", width=100)
+            st.image("logo.png", use_container_width=True)
         except:
             pass
 
-        st.markdown(f"### Non-Air Operations ERP")
-        st.markdown(f"**Welcome, {st.session_state.current_user}**")
-        st.markdown("---")
+        st.markdown(f"""
+        <div style="
+            text-align: center;
+            padding: 12px 0 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            margin-bottom: 16px;
+        ">
+            <div style="
+                color: white;
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                line-height: 1.4;
+            ">Non-Air Operations ERP</div>
+            <div style="
+                color: #93C5FD;
+                font-size: 12px;
+                margin-top: 4px;
+            ">Welcome, {st.session_state.current_user}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
         if st.session_state.current_user == "Bassma":
@@ -746,8 +766,16 @@ else:
             if st.button(page, use_container_width=True, key=f"nav_{page}"):
                 st.session_state.page = page
 
-        st.markdown("---")
-        if st.button("Logout", use_container_width=True):
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="
+            border-top: 1px solid rgba(255,255,255,0.15);
+            padding-top: 12px;
+        "></div>
+        """, unsafe_allow_html=True)
+
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.logged_in = False
             st.session_state.current_user = ""
             st.rerun()
