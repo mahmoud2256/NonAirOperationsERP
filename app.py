@@ -306,10 +306,9 @@ def show_login():
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.image("logo.png", width=250
-                )
+        st.image("logo.png", width=120)
         st.markdown("## Non-Air Operations ERP")
-        st.markdown("##### Bright Star")
+        st.markdown("##### Kanoo Travel")
         st.markdown("<br>", unsafe_allow_html=True)
 
         with st.form("login_form"):
@@ -337,7 +336,7 @@ def show_login():
 
 def show_dashboard():
     st.markdown("# Operations Dashboard")
-    st.markdown("**Bright Star  •  Non-Air Operations**")
+    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
 
     cur = get_cursor()
     cur.execute("""
@@ -409,79 +408,186 @@ def show_dashboard():
             </div>
             """, unsafe_allow_html=True)
 
+    # ── CUSTOMER ANALYSIS ──────────────────────────────────
+    st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
+
+    accounts = load_accounts()
+
+    selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
+
+    if selected_account:
+        cur.execute("""
+        SELECT COUNT(*),
+               COALESCE(SUM(total_amount),0),
+               COALESCE(SUM(paid_to_supplier),0),
+               COALESCE(SUM(handling_fees),0),
+               COALESCE(SUM(vat),0)
+        FROM invoices WHERE accounts = %s
+        """, (selected_account,))
+        c_count, c_total, c_paid, c_handling, c_vat = cur.fetchone()
+        c_profit = c_handling + c_vat
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #1A3A5C;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_count}</p>
+                <p class="metric-label">Invoices Count</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{c_total:,.0f}</p>
+                <p class="metric-label">Total Amount</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_paid:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{c_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+
 # =========================================================
 # INVOICES PAGE
 # =========================================================
 
 def show_invoices():
-    st.markdown("# Invoice Registration")
-    st.markdown("##### Vendor Invoice Details")
 
     vendors_df = load_vendors()
     vendors = vendors_df["Alias"].tolist()
     issuers = load_issuers()
     accounts = load_accounts()
 
-    # قراءة الحقول خارج الفورم لتفعيل الحساب الفوري
-    col1, col2 = st.columns(2)
+    st.markdown("""
+    <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+        <span style="color:white; font-size:20px; font-weight:700; letter-spacing:0.5px;">
+            📄 Invoice Registration
+        </span>
+        <span style="color:#93C5FD; font-size:13px; margin-left:16px;">
+            Vendor Invoice Details
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with col1:
+    # ── ROW 1 ──────────────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:12px;">General Information</p>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
         inv_date = st.date_input("Date", value=date.today())
-        owner = st.selectbox("Owner", [""] + issuers)
-        service_date = st.date_input("Date of Service", value=date.today())
-        service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
-        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES)
-        supplier_inv_no = st.text_input("Supplier Invoice No")
-        paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01, key="paid")
-
-    with col2:
+    with c2:
         invoice_no = st.text_input("Invoice No")
+    with c3:
+        owner = st.selectbox("Owner", [""] + issuers)
+    with c4:
         accounts_val = st.selectbox("Accounts", [""] + accounts)
+
+    # ── ROW 2 ──────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        service_date = st.date_input("Date of Service", value=date.today())
+    with c2:
         subject = st.text_input("Subject")
+    with c3:
+        service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
+    with c4:
         vendor = st.selectbox("Vendor", [""] + vendors)
 
-        vendor_city = ""
-        if vendor:
-            v_data = vendors_df[vendors_df["Alias"] == vendor]
-            if not v_data.empty:
-                vendor_city = v_data.iloc[0]["City"]
+    # ── ROW 3 ──────────────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Service Details</p>', unsafe_allow_html=True)
 
+    vendor_city = ""
+    if vendor:
+        v_data = vendors_df[vendors_df["Alias"] == vendor]
+        if not v_data.empty:
+            vendor_city = v_data.iloc[0]["City"]
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
+                           index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
+                           if vendor_city in EGYPT_GOVERNORATES else 0)
+    with c2:
         pax = st.number_input("No. of PAX", min_value=0, step=1)
+    with c3:
+        supplier_inv_no = st.text_input("Supplier Invoice No")
+    with c4:
         po = st.text_input("PO")
 
+    # ── ROW 4: AMOUNTS ─────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details</p>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01, key="paid")
+    with c2:
         rate = get_handling_rate(accounts_val) if accounts_val else None
         if rate:
             handling_fees = paid_to_supplier * rate
             st.markdown(f"""
-            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:12px; margin:8px 0;">
-                <span style="color:#1A3A5C; font-size:12px; font-weight:600;">HANDLING FEES ({rate*100:.1f}%)</span><br>
-                <span style="color:#1A3A5C; font-size:22px; font-weight:700;">{handling_fees:,.2f}</span>
+            <div style="margin-top:4px;">
+                <label style="font-size:14px;color:#374151;font-weight:500;">Handling Fees ({rate*100:.1f}%)</label>
+                <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:18px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
+                </div>
             </div>
             """, unsafe_allow_html=True)
         else:
             handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
-
+    with c3:
         currency = st.selectbox("Currency", ["EGP", "USD"])
+    with c4:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
+    # ── TOTALS BAR ─────────────────────────────────────────
     vat = handling_fees * VAT_RATE
     total = paid_to_supplier + handling_fees + vat
 
     st.markdown(f"""
-    <div style="background:#F0FDF4; border:1px solid #86EFAC; border-radius:6px; padding:16px; margin:16px 0; display:flex; gap:40px;">
+    <div style="
+        background: linear-gradient(135deg, #1A3A5C 0%, #1e4976 100%);
+        border-radius: 8px;
+        padding: 20px 28px;
+        margin: 20px 0;
+        display: flex;
+        gap: 60px;
+        align-items: center;
+    ">
         <div>
-            <span style="color:#6B7280; font-size:12px; font-weight:600;">VAT (14%)</span><br>
-            <span style="color:#B45309; font-size:20px; font-weight:700;">{vat:,.2f}</span>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">VAT (14%)</div>
+            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{vat:,.2f}</div>
         </div>
+        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
         <div>
-            <span style="color:#6B7280; font-size:12px; font-weight:600;">TOTAL AMOUNT</span><br>
-            <span style="color:#166534; font-size:24px; font-weight:700;">{total:,.2f} {currency}</span>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">TOTAL AMOUNT</div>
+            <div style="color:#4ADE80; font-size:28px; font-weight:800; font-family:'Segoe UI',Arial,sans-serif;">{total:,.2f} <span style="font-size:16px; color:#86EFAC;">{currency}</span></div>
+        </div>
+        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">PAID TO SUPPLIER</div>
+            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{paid_to_supplier:,.2f}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("✅ GENERATE INVOICE", use_container_width=True, type="primary"):
+    # ── GENERATE BUTTON ────────────────────────────────────
+    col_btn, col_empty = st.columns([1, 3])
+    with col_btn:
+        generate = st.button("✅  GENERATE INVOICE", use_container_width=True, type="primary")
+
+    if generate:
         if not invoice_no or not vendor or not accounts_val:
-            st.error("Please fill Invoice No, Vendor, and Accounts")
+            st.error("⚠️ Please fill Invoice No, Vendor, and Accounts")
         else:
             cur = get_cursor()
             cur.execute("""
@@ -617,7 +723,7 @@ if not st.session_state.logged_in:
 else:
     with st.sidebar:
         try:
-            st.image("logo.png", width=200)
+            st.image("logo.png", width=100)
         except:
             pass
 
