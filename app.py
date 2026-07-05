@@ -310,18 +310,69 @@ if "logged_in" not in st.session_state:
 # =========================================================
 
 def show_login():
-    col1, col2, col3 = st.columns([1, 1.5, 1])
+
+    st.markdown("""
+    <style>
+        .stApp { background: linear-gradient(135deg, #0f172a 0%, #1A3A5C 100%) !important; }
+        .main .block-container { padding-top: 0 !important; }
+
+        .login-container {
+            max-width: 420px;
+            margin: 60px auto;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 40px;
+            backdrop-filter: blur(10px);
+        }
+
+        .login-title {
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            margin: 16px 0 4px 0;
+        }
+
+        .login-subtitle {
+            color: #93C5FD;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .stTextInput label { color: #CBD5E1 !important; font-size: 13px !important; }
+        .stTextInput input {
+            background: rgba(255,255,255,0.08) !important;
+            border: 1px solid rgba(255,255,255,0.2) !important;
+            color: white !important;
+            border-radius: 6px !important;
+        }
+        .stTextInput input:focus {
+            border-color: #3B82F6 !important;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.3) !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.image("logo.png", width=120)
-        st.markdown("## Non-Air Operations ERP")
-        st.markdown("##### Kanoo Travel")
-        st.markdown("<br>", unsafe_allow_html=True)
+
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            pass
+
+        st.markdown("""
+        <div class="login-title">Non-Air Operations ERP</div>
+        <div class="login-subtitle">Bright Star • Non-Air Operations</div>
+        """, unsafe_allow_html=True)
 
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login", use_container_width=True)
+            submit = st.form_submit_button("🔐  Sign In", use_container_width=True)
 
             if submit:
                 cur = get_cursor()
@@ -335,7 +386,7 @@ def show_login():
                     st.session_state.current_user = username
                     st.rerun()
                 else:
-                    st.error("Invalid username or password")
+                    st.error("❌ Invalid username or password")
 
 # =========================================================
 # DASHBOARD PAGE
@@ -808,7 +859,7 @@ else:
             st.markdown(f"""
             <div class="metric-card" style="border-top:3px solid #1A3A5C;">
                 <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">RESPONSIBLE PERSON</p>
-                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Moon Stone</p>
+                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Mody</p>
             </div>
             """, unsafe_allow_html=True)
 
