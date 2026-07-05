@@ -274,6 +274,13 @@ st.markdown("""
         color: #1A3A5C !important;
     }
 
+    /* ===== HIDE GITHUB ICON ===== */
+    .stToolbarActions [data-testid="stBaseButton-github"],
+    [data-testid="stToolbar"] a[href*="github"],
+    .stAppToolbar a[href*="github"] {
+        display: none !important;
+    }
+
     /* ===== ALERTS ===== */
     .stSuccess {
         background-color: #ECFDF5;
