@@ -19,7 +19,7 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Kanoo%402026%2F@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
 @st.cache_resource
 def get_connection():
@@ -142,56 +142,149 @@ def load_accounts():
 
 st.markdown("""
 <style>
-    .main { background-color: #020617; }
-    .stApp { background-color: #020617; color: white; }
-
-    section[data-testid="stSidebar"] {
-        background-color: #0f172a;
-        border-right: 1px solid #1e293b;
+    /* ===== GLOBAL ===== */
+    .stApp {
+        background-color: #F5F6FA;
+        color: #1A1A2E;
+        font-family: 'Segoe UI', Arial, sans-serif;
     }
 
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
+
+    /* ===== SIDEBAR ===== */
+    section[data-testid="stSidebar"] {
+        background-color: #1A3A5C;
+        border-right: none;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: transparent;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 4px;
+        font-weight: 500;
+        text-align: left;
+        padding: 8px 16px;
+        transition: all 0.2s;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background-color: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.4);
+    }
+
+    /* ===== METRIC CARDS ===== */
     .metric-card {
-        background: #111827;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 20px;
+        background: white;
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+        padding: 20px 24px;
         margin: 8px 0;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
     }
 
     .metric-number {
-        font-size: 28px;
-        font-weight: bold;
+        font-size: 32px;
+        font-weight: 700;
         margin: 0;
+        line-height: 1.2;
     }
 
     .metric-label {
         font-size: 11px;
-        color: #94A3B8;
+        color: #6B7280;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 1.2px;
         margin: 8px 0 0 0;
+        font-weight: 600;
     }
 
     .section-label {
         font-size: 11px;
-        color: #64748B;
-        font-weight: bold;
+        color: #6B7280;
+        font-weight: 700;
         letter-spacing: 1.5px;
         text-transform: uppercase;
-        margin: 24px 0 8px 0;
+        margin: 28px 0 10px 0;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #E0E4EA;
     }
 
+    /* ===== FORM ===== */
+    div[data-testid="stForm"] {
+        background: white;
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+        padding: 24px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    /* ===== INPUTS ===== */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stNumberInput > div > div > input {
+        background-color: white;
+        border: 1px solid #D1D5DB;
+        border-radius: 4px;
+        color: #1A1A2E;
+        font-size: 14px;
+    }
+
+    /* ===== BUTTONS ===== */
     .stButton > button {
         border-radius: 4px;
-        font-weight: bold;
-        border: none;
+        font-weight: 600;
+        font-size: 13px;
+        border: 1px solid #1A3A5C;
+        background-color: #1A3A5C;
+        color: white;
+        padding: 8px 20px;
+        transition: all 0.2s;
     }
 
-    div[data-testid="stForm"] {
-        background: #111827;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 20px;
+    .stButton > button:hover {
+        background-color: #14304F;
+        border-color: #14304F;
+    }
+
+    /* ===== DATAFRAME ===== */
+    .stDataFrame {
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+    }
+
+    /* ===== PAGE TITLE ===== */
+    h1 {
+        color: #1A3A5C !important;
+        font-size: 26px !important;
+        font-weight: 700 !important;
+        border-bottom: 3px solid #1A3A5C;
+        padding-bottom: 10px;
+        margin-bottom: 4px !important;
+    }
+
+    h2, h3 {
+        color: #1A3A5C !important;
+    }
+
+    /* ===== ALERTS ===== */
+    .stSuccess {
+        background-color: #ECFDF5;
+        border-left: 4px solid #10B981;
+        color: #065F46;
+    }
+
+    .stError {
+        background-color: #FEF2F2;
+        border-left: 4px solid #EF4444;
+        color: #991B1B;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -215,7 +308,7 @@ def show_login():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.image("logo.png", width=120)
         st.markdown("## Non-Air Operations ERP")
-        st.markdown("##### Bright Star")
+        st.markdown("##### Kanoo Travel")
         st.markdown("<br>", unsafe_allow_html=True)
 
         with st.form("login_form"):
@@ -243,7 +336,7 @@ def show_login():
 
 def show_dashboard():
     st.markdown("# Operations Dashboard")
-    st.markdown("**Bright Star  •  Non-Air Operations**")
+    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
 
     cur = get_cursor()
     cur.execute("""
@@ -258,21 +351,21 @@ def show_dashboard():
     with col1:
         st.markdown(f"""
         <div class="metric-card" style="border-top: 3px solid #22C55E;">
-            <p class="metric-number" style="color:#22C55E;">{total_sales:,.0f}</p>
+            <p class="metric-number" style="color:#1A7A4A;">{total_sales:,.0f}</p>
             <p class="metric-label">Total Sales</p>
         </div>
         """, unsafe_allow_html=True)
     with col2:
         st.markdown(f"""
         <div class="metric-card" style="border-top: 3px solid #3B82F6;">
-            <p class="metric-number" style="color:#3B82F6;">{total_revenue:,.0f}</p>
+            <p class="metric-number" style="color:#1A3A5C;">{total_revenue:,.0f}</p>
             <p class="metric-label">Total Revenue (Paid to Supplier)</p>
         </div>
         """, unsafe_allow_html=True)
     with col3:
         st.markdown(f"""
         <div class="metric-card" style="border-top: 3px solid #F59E0B;">
-            <p class="metric-number" style="color:#F59E0B;">{count}</p>
+            <p class="metric-number" style="color:#B45309;">{count}</p>
             <p class="metric-label">Invoices Count</p>
         </div>
         """, unsafe_allow_html=True)
@@ -296,21 +389,21 @@ def show_dashboard():
         with col1:
             st.markdown(f"""
             <div class="metric-card" style="border-top: 3px solid #3B82F6;">
-                <p class="metric-number" style="color:#3B82F6;">{v_purchased:,.0f}</p>
+                <p class="metric-number" style="color:#1A3A5C;">{v_purchased:,.0f}</p>
                 <p class="metric-label">Paid To Supplier</p>
             </div>
             """, unsafe_allow_html=True)
         with col2:
             st.markdown(f"""
             <div class="metric-card" style="border-top: 3px solid #22C55E;">
-                <p class="metric-number" style="color:#22C55E;">{v_profit:,.0f}</p>
+                <p class="metric-number" style="color:#1A7A4A;">{v_profit:,.0f}</p>
                 <p class="metric-label">Profit (Handling + VAT)</p>
             </div>
             """, unsafe_allow_html=True)
         with col3:
             st.markdown(f"""
             <div class="metric-card" style="border-top: 3px solid #F59E0B;">
-                <p class="metric-number" style="color:#F59E0B;">{v_count}</p>
+                <p class="metric-number" style="color:#B45309;">{v_count}</p>
                 <p class="metric-label">Invoices With Vendor</p>
             </div>
             """, unsafe_allow_html=True)
@@ -373,11 +466,11 @@ def show_invoices():
 
         st.markdown(f"""
         <div style="background:#111827; padding:16px; border-radius:8px; margin:12px 0;">
-            <span style="color:#94A3B8;">VAT (14%): </span>
-            <span style="color:#F59E0B; font-weight:bold;">{vat:,.2f}</span>
+            <span style="color:#6B7280;">VAT (14%): </span>
+            <span style="color:#B45309; font-weight:bold;">{vat:,.2f}</span>
             &nbsp;&nbsp;&nbsp;
-            <span style="color:#94A3B8;">Total Amount: </span>
-            <span style="color:#22C55E; font-weight:bold; font-size:18px;">{total:,.2f} {currency}</span>
+            <span style="color:#6B7280;">Total Amount: </span>
+            <span style="color:#1A7A4A; font-weight:bold; font-size:18px;">{total:,.2f} {currency}</span>
         </div>
         """, unsafe_allow_html=True)
 
