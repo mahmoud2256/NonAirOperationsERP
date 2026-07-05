@@ -308,7 +308,7 @@ def show_login():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.image("logo.png", width=120)
         st.markdown("## Non-Air Operations ERP")
-        st.markdown("##### Kanoo Travel")
+        st.markdown("##### Bright Star")
         st.markdown("<br>", unsafe_allow_html=True)
 
         with st.form("login_form"):
@@ -336,7 +336,7 @@ def show_login():
 
 def show_dashboard():
     st.markdown("# Operations Dashboard")
-    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
+    st.markdown("**Bright Star  •  Non-Air Operations**")
 
     cur = get_cursor()
     cur.execute("""
