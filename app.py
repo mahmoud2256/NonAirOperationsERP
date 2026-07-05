@@ -808,7 +808,7 @@ else:
             st.markdown(f"""
             <div class="metric-card" style="border-top:3px solid #1A3A5C;">
                 <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">RESPONSIBLE PERSON</p>
-                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Mody</p>
+                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Moon Stone</p>
             </div>
             """, unsafe_allow_html=True)
 
