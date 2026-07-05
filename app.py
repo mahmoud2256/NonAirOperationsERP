@@ -1,0 +1,556 @@
+import streamlit as st
+import psycopg2
+import pandas as pd
+from datetime import date, datetime
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+
+st.set_page_config(
+    page_title="Non-Air Operations ERP",
+    page_icon="✈️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# =========================================================
+# DATABASE CONNECTION
+# =========================================================
+# ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
+
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+
+@st.cache_resource
+def get_connection():
+    return psycopg2.connect(DB_URL)
+
+def get_cursor():
+    conn = get_connection()
+    conn.autocommit = True
+    return conn.cursor()
+
+# =========================================================
+# CREATE TABLES
+# =========================================================
+
+def create_tables():
+    cur = get_cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS invoices (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        invoice_no TEXT,
+        owner TEXT,
+        accounts TEXT,
+        service_date TEXT,
+        subject TEXT,
+        service_type TEXT,
+        supplier TEXT,
+        supplier_city TEXT,
+        no_of_pax INTEGER,
+        supplier_invoice_no TEXT,
+        po_number TEXT,
+        total_amount REAL,
+        paid_to_supplier REAL,
+        handling_fees REAL,
+        vat REAL,
+        currency TEXT,
+        payment_status TEXT,
+        created_by TEXT
+    )
+    """)
+
+    cur.execute("""
+    INSERT INTO users (username, password)
+    VALUES ('Bassma', '1234')
+    ON CONFLICT (username) DO NOTHING
+    """)
+
+# =========================================================
+# STATIC DATA
+# =========================================================
+
+EGYPT_GOVERNORATES = [
+    "Cairo", "Giza", "Alexandria", "Qalyubia", "Port Said",
+    "Suez", "Damietta", "Dakahlia", "Sharqia", "Gharbia",
+    "Monufia", "Beheira", "Ismailia", "Kafr El Sheikh",
+    "North Sinai", "South Sinai", "Beni Suef", "Faiyum",
+    "Minya", "Asyut", "Sohag", "Qena", "Luxor", "Aswan",
+    "Red Sea", "New Valley", "Matrouh"
+]
+
+SERVICE_TYPES = [
+    "Hotel", "Flight", "Transfer", "Visa", "Insurance",
+    "Tour", "Restaurant", "Cruise", "Train", "Car Rental",
+    "Guide", "Entrance Fees", "Meet & Assist",
+    "Conference / MICE", "Other"
+]
+
+VAT_RATE = 0.14
+
+def get_handling_rate(account_name):
+    name = account_name.strip().upper()
+    if "ASTRA" in name:
+        return 0.049
+    elif "ACINO" in name:
+        return 0.05
+    return None
+
+# =========================================================
+# LOAD EXCEL FILES
+# =========================================================
+
+@st.cache_data
+def load_vendors():
+    try:
+        df = pd.read_excel("vendors.xlsx").fillna("")
+        if "City" not in df.columns:
+            df["City"] = ""
+        return df
+    except:
+        return pd.DataFrame(columns=["Alias", "City"])
+
+@st.cache_data
+def load_issuers():
+    try:
+        df = pd.read_excel("issuers.xlsx").fillna("")
+        return df["Issuer"].tolist()
+    except:
+        return []
+
+@st.cache_data
+def load_accounts():
+    try:
+        df = pd.read_excel("accounts.xlsx").fillna("")
+        return df["Accounts"].tolist()
+    except:
+        return []
+
+# =========================================================
+# CSS STYLING
+# =========================================================
+
+st.markdown("""
+<style>
+    .main { background-color: #020617; }
+    .stApp { background-color: #020617; color: white; }
+
+    section[data-testid="stSidebar"] {
+        background-color: #0f172a;
+        border-right: 1px solid #1e293b;
+    }
+
+    .metric-card {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 8px 0;
+    }
+
+    .metric-number {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0;
+    }
+
+    .metric-label {
+        font-size: 11px;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 8px 0 0 0;
+    }
+
+    .section-label {
+        font-size: 11px;
+        color: #64748B;
+        font-weight: bold;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin: 24px 0 8px 0;
+    }
+
+    .stButton > button {
+        border-radius: 4px;
+        font-weight: bold;
+        border: none;
+    }
+
+    div[data-testid="stForm"] {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.current_user = ""
+    st.session_state.page = "Dashboard"
+
+# =========================================================
+# LOGIN PAGE
+# =========================================================
+
+def show_login():
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.image("logo.png", width=120)
+        st.markdown("## Non-Air Operations ERP")
+        st.markdown("##### Kanoo Travel")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Login", use_container_width=True)
+
+            if submit:
+                cur = get_cursor()
+                cur.execute(
+                    "SELECT * FROM users WHERE username=%s AND password=%s",
+                    (username, password)
+                )
+                user = cur.fetchone()
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = username
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
+
+# =========================================================
+# DASHBOARD PAGE
+# =========================================================
+
+def show_dashboard():
+    st.markdown("# Operations Dashboard")
+    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
+
+    cur = get_cursor()
+    cur.execute("""
+    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
+    FROM invoices
+    """)
+    count, total_sales, total_revenue = cur.fetchone()
+
+    st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #22C55E;">
+            <p class="metric-number" style="color:#22C55E;">{total_sales:,.0f}</p>
+            <p class="metric-label">Total Sales</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+            <p class="metric-number" style="color:#3B82F6;">{total_revenue:,.0f}</p>
+            <p class="metric-label">Total Revenue (Paid to Supplier)</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+            <p class="metric-number" style="color:#F59E0B;">{count}</p>
+            <p class="metric-label">Invoices Count</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
+
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+
+    selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
+
+    if selected_vendor:
+        cur.execute("""
+        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+        FROM invoices WHERE supplier = %s
+        """, (selected_vendor,))
+        v_count, v_purchased, v_total = cur.fetchone()
+        v_profit = v_total - v_purchased
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#3B82F6;">{v_purchased:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#22C55E;">{v_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#F59E0B;">{v_count}</p>
+                <p class="metric-label">Invoices With Vendor</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+# =========================================================
+# INVOICES PAGE
+# =========================================================
+
+def show_invoices():
+    st.markdown("# Invoice Registration")
+    st.markdown("##### Vendor Invoice Details")
+
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+    issuers = load_issuers()
+    accounts = load_accounts()
+
+    with st.form("invoice_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            inv_date = st.date_input("Date", value=date.today())
+            owner = st.selectbox("Owner", [""] + issuers)
+            service_date = st.date_input("Date of Service", value=date.today())
+            service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
+            city = st.selectbox("City", [""] + EGYPT_GOVERNORATES)
+            supplier_inv_no = st.text_input("Supplier Invoice No")
+            paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01)
+            vat = paid_to_supplier * 0.0  # placeholder
+
+        with col2:
+            invoice_no = st.text_input("Invoice No")
+            accounts_val = st.selectbox("Accounts", [""] + accounts)
+            subject = st.text_input("Subject")
+            vendor = st.selectbox("Vendor", [""] + vendors)
+
+            vendor_city = ""
+            if vendor:
+                v_data = vendors_df[vendors_df["Alias"] == vendor]
+                if not v_data.empty:
+                    vendor_city = v_data.iloc[0]["City"]
+
+            pax = st.number_input("No. of PAX", min_value=0, step=1)
+            po = st.text_input("PO")
+
+            rate = get_handling_rate(accounts_val) if accounts_val else None
+            if rate:
+                handling_fees = paid_to_supplier * rate
+                st.metric(
+                    f"Handling Fees ({rate*100:.1f}%)",
+                    f"{handling_fees:,.2f}"
+                )
+            else:
+                handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01)
+
+            currency = st.selectbox("Currency", ["EGP", "USD"])
+
+        vat = handling_fees * VAT_RATE
+        total = paid_to_supplier + handling_fees + vat
+
+        st.markdown(f"""
+        <div style="background:#111827; padding:16px; border-radius:8px; margin:12px 0;">
+            <span style="color:#94A3B8;">VAT (14%): </span>
+            <span style="color:#F59E0B; font-weight:bold;">{vat:,.2f}</span>
+            &nbsp;&nbsp;&nbsp;
+            <span style="color:#94A3B8;">Total Amount: </span>
+            <span style="color:#22C55E; font-weight:bold; font-size:18px;">{total:,.2f} {currency}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        submitted = st.form_submit_button("✅ GENERATE INVOICE", use_container_width=True)
+
+        if submitted:
+            if not invoice_no or not vendor or not accounts_val:
+                st.error("Please fill Invoice No, Vendor, and Accounts")
+            else:
+                cur = get_cursor()
+                cur.execute("""
+                INSERT INTO invoices (
+                    date, invoice_no, owner, accounts, service_date,
+                    subject, service_type, supplier, supplier_city,
+                    no_of_pax, supplier_invoice_no, po_number,
+                    total_amount, paid_to_supplier, handling_fees,
+                    vat, currency, payment_status, created_by
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    str(inv_date), invoice_no, owner, accounts_val,
+                    str(service_date), subject, service_type, vendor,
+                    vendor_city or city, pax, supplier_inv_no, po,
+                    total, paid_to_supplier, handling_fees, vat,
+                    currency, "Pending", st.session_state.current_user
+                ))
+                st.success("✅ Invoice Generated Successfully!")
+
+# =========================================================
+# REPORTS PAGE
+# =========================================================
+
+def show_reports():
+    st.markdown("# Reports")
+
+    search = st.text_input("🔍 Search by Vendor, Account, or Invoice No")
+
+    cur = get_cursor()
+
+    if search:
+        cur.execute("""
+        SELECT id, date, invoice_no, owner, accounts, service_date,
+               subject, service_type, supplier, supplier_city, no_of_pax,
+               supplier_invoice_no, po_number, total_amount, paid_to_supplier,
+               handling_fees, vat, currency, payment_status
+        FROM invoices
+        WHERE supplier ILIKE %s OR accounts ILIKE %s OR invoice_no ILIKE %s
+        ORDER BY id DESC
+        """, (f"%{search}%", f"%{search}%", f"%{search}%"))
+    else:
+        cur.execute("""
+        SELECT id, date, invoice_no, owner, accounts, service_date,
+               subject, service_type, supplier, supplier_city, no_of_pax,
+               supplier_invoice_no, po_number, total_amount, paid_to_supplier,
+               handling_fees, vat, currency, payment_status
+        FROM invoices ORDER BY id DESC
+        """)
+
+    rows = cur.fetchall()
+    columns = [
+        "ID", "Date", "Invoice No", "Owner", "Accounts", "Date of Service",
+        "Subject", "Type of Service", "Vendor", "City", "PAX",
+        "Supplier Inv No", "PO", "Total Amount", "Paid to Supplier",
+        "Handling Fees", "VAT", "Currency", "Status"
+    ]
+
+    if rows:
+        df = pd.DataFrame(rows, columns=columns)
+        st.dataframe(df, use_container_width=True, height=500)
+
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "📥 Export to Excel",
+            csv,
+            "invoices_report.csv",
+            "text/csv"
+        )
+    else:
+        st.info("No invoices found")
+
+# =========================================================
+# ADMIN PANEL PAGE
+# =========================================================
+
+def show_admin():
+    st.markdown("# Admin Panel")
+
+    cur = get_cursor()
+
+    st.markdown("### Add New User")
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        new_username = st.text_input("Username")
+    with col2:
+        new_password = st.text_input("Password", type="password")
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("ADD USER", use_container_width=True):
+            if new_username and new_password:
+                try:
+                    cur.execute(
+                        "INSERT INTO users (username, password) VALUES (%s, %s)",
+                        (new_username, new_password)
+                    )
+                    st.success(f"✅ User '{new_username}' added!")
+                except:
+                    st.error("Username already exists")
+            else:
+                st.warning("Please fill both fields")
+
+    st.markdown("### Current Users")
+    cur.execute("SELECT id, username FROM users ORDER BY id")
+    users = cur.fetchall()
+
+    if users:
+        df = pd.DataFrame(users, columns=["ID", "Username"])
+        st.dataframe(df, use_container_width=True)
+
+        del_username = st.selectbox(
+            "Select user to delete",
+            [u[1] for u in users if u[1] != "Bassma"]
+        )
+        if st.button("🗑️ DELETE SELECTED USER", type="primary"):
+            cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
+            st.success(f"✅ User '{del_username}' deleted!")
+            st.rerun()
+
+# =========================================================
+# MAIN APP
+# =========================================================
+
+try:
+    create_tables()
+except Exception as e:
+    st.error(f"Database connection error: {e}")
+    st.info("Please check your database password in the code")
+    st.stop()
+
+if not st.session_state.logged_in:
+    show_login()
+else:
+    with st.sidebar:
+        try:
+            st.image("logo.png", width=100)
+        except:
+            pass
+
+        st.markdown(f"### Non-Air Operations ERP")
+        st.markdown(f"**Welcome, {st.session_state.current_user}**")
+        st.markdown("---")
+
+        pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
+        if st.session_state.current_user == "Bassma":
+            pages.append("Admin Panel")
+
+        for page in pages:
+            if st.button(page, use_container_width=True, key=f"nav_{page}"):
+                st.session_state.page = page
+
+        st.markdown("---")
+        if st.button("Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.current_user = ""
+            st.rerun()
+
+    if st.session_state.page == "Dashboard":
+        show_dashboard()
+    elif st.session_state.page == "Invoices":
+        show_invoices()
+    elif st.session_state.page == "Reports":
+        show_reports()
+    elif st.session_state.page == "Vendors":
+        vendors_df = load_vendors()
+        st.markdown("# Vendors")
+        st.dataframe(vendors_df, use_container_width=True, height=500)
+    elif st.session_state.page == "Admin Panel":
+        show_admin()
