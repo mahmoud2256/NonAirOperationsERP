@@ -421,82 +421,85 @@ def show_invoices():
     issuers = load_issuers()
     accounts = load_accounts()
 
-    with st.form("invoice_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+    # قراءة الحقول خارج الفورم لتفعيل الحساب الفوري
+    col1, col2 = st.columns(2)
 
-        with col1:
-            inv_date = st.date_input("Date", value=date.today())
-            owner = st.selectbox("Owner", [""] + issuers)
-            service_date = st.date_input("Date of Service", value=date.today())
-            service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
-            city = st.selectbox("City", [""] + EGYPT_GOVERNORATES)
-            supplier_inv_no = st.text_input("Supplier Invoice No")
-            paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01)
-            vat = paid_to_supplier * 0.0  # placeholder
+    with col1:
+        inv_date = st.date_input("Date", value=date.today())
+        owner = st.selectbox("Owner", [""] + issuers)
+        service_date = st.date_input("Date of Service", value=date.today())
+        service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
+        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES)
+        supplier_inv_no = st.text_input("Supplier Invoice No")
+        paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01, key="paid")
 
-        with col2:
-            invoice_no = st.text_input("Invoice No")
-            accounts_val = st.selectbox("Accounts", [""] + accounts)
-            subject = st.text_input("Subject")
-            vendor = st.selectbox("Vendor", [""] + vendors)
+    with col2:
+        invoice_no = st.text_input("Invoice No")
+        accounts_val = st.selectbox("Accounts", [""] + accounts)
+        subject = st.text_input("Subject")
+        vendor = st.selectbox("Vendor", [""] + vendors)
 
-            vendor_city = ""
-            if vendor:
-                v_data = vendors_df[vendors_df["Alias"] == vendor]
-                if not v_data.empty:
-                    vendor_city = v_data.iloc[0]["City"]
+        vendor_city = ""
+        if vendor:
+            v_data = vendors_df[vendors_df["Alias"] == vendor]
+            if not v_data.empty:
+                vendor_city = v_data.iloc[0]["City"]
 
-            pax = st.number_input("No. of PAX", min_value=0, step=1)
-            po = st.text_input("PO")
+        pax = st.number_input("No. of PAX", min_value=0, step=1)
+        po = st.text_input("PO")
 
-            rate = get_handling_rate(accounts_val) if accounts_val else None
-            if rate:
-                handling_fees = paid_to_supplier * rate
-                st.metric(
-                    f"Handling Fees ({rate*100:.1f}%)",
-                    f"{handling_fees:,.2f}"
-                )
-            else:
-                handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01)
+        rate = get_handling_rate(accounts_val) if accounts_val else None
+        if rate:
+            handling_fees = paid_to_supplier * rate
+            st.markdown(f"""
+            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:12px; margin:8px 0;">
+                <span style="color:#1A3A5C; font-size:12px; font-weight:600;">HANDLING FEES ({rate*100:.1f}%)</span><br>
+                <span style="color:#1A3A5C; font-size:22px; font-weight:700;">{handling_fees:,.2f}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
 
-            currency = st.selectbox("Currency", ["EGP", "USD"])
+        currency = st.selectbox("Currency", ["EGP", "USD"])
 
-        vat = handling_fees * VAT_RATE
-        total = paid_to_supplier + handling_fees + vat
+    vat = handling_fees * VAT_RATE
+    total = paid_to_supplier + handling_fees + vat
 
-        st.markdown(f"""
-        <div style="background:#111827; padding:16px; border-radius:8px; margin:12px 0;">
-            <span style="color:#6B7280;">VAT (14%): </span>
-            <span style="color:#B45309; font-weight:bold;">{vat:,.2f}</span>
-            &nbsp;&nbsp;&nbsp;
-            <span style="color:#6B7280;">Total Amount: </span>
-            <span style="color:#1A7A4A; font-weight:bold; font-size:18px;">{total:,.2f} {currency}</span>
+    st.markdown(f"""
+    <div style="background:#F0FDF4; border:1px solid #86EFAC; border-radius:6px; padding:16px; margin:16px 0; display:flex; gap:40px;">
+        <div>
+            <span style="color:#6B7280; font-size:12px; font-weight:600;">VAT (14%)</span><br>
+            <span style="color:#B45309; font-size:20px; font-weight:700;">{vat:,.2f}</span>
         </div>
-        """, unsafe_allow_html=True)
+        <div>
+            <span style="color:#6B7280; font-size:12px; font-weight:600;">TOTAL AMOUNT</span><br>
+            <span style="color:#166534; font-size:24px; font-weight:700;">{total:,.2f} {currency}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-        submitted = st.form_submit_button("✅ GENERATE INVOICE", use_container_width=True)
-
-        if submitted:
-            if not invoice_no or not vendor or not accounts_val:
-                st.error("Please fill Invoice No, Vendor, and Accounts")
-            else:
-                cur = get_cursor()
-                cur.execute("""
-                INSERT INTO invoices (
-                    date, invoice_no, owner, accounts, service_date,
-                    subject, service_type, supplier, supplier_city,
-                    no_of_pax, supplier_invoice_no, po_number,
-                    total_amount, paid_to_supplier, handling_fees,
-                    vat, currency, payment_status, created_by
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    str(inv_date), invoice_no, owner, accounts_val,
-                    str(service_date), subject, service_type, vendor,
-                    vendor_city or city, pax, supplier_inv_no, po,
-                    total, paid_to_supplier, handling_fees, vat,
-                    currency, "Pending", st.session_state.current_user
-                ))
-                st.success("✅ Invoice Generated Successfully!")
+    if st.button("✅ GENERATE INVOICE", use_container_width=True, type="primary"):
+        if not invoice_no or not vendor or not accounts_val:
+            st.error("Please fill Invoice No, Vendor, and Accounts")
+        else:
+            cur = get_cursor()
+            cur.execute("""
+            INSERT INTO invoices (
+                date, invoice_no, owner, accounts, service_date,
+                subject, service_type, supplier, supplier_city,
+                no_of_pax, supplier_invoice_no, po_number,
+                total_amount, paid_to_supplier, handling_fees,
+                vat, currency, payment_status, created_by
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                str(inv_date), invoice_no, owner, accounts_val,
+                str(service_date), subject, service_type, vendor,
+                vendor_city or city, pax, supplier_inv_no, po,
+                total, paid_to_supplier, handling_fees, vat,
+                currency, "Pending", st.session_state.current_user
+            ))
+            st.success("✅ Invoice Generated Successfully!")
+            st.balloons()
 
 # =========================================================
 # REPORTS PAGE
