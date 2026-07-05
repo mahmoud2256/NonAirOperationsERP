@@ -306,7 +306,8 @@ def show_login():
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.image("logo.png", width=60)
+        st.image("logo.png", width=200
+                )
         st.markdown("## Non-Air Operations ERP")
         st.markdown("##### Bright Star")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -616,7 +617,7 @@ if not st.session_state.logged_in:
 else:
     with st.sidebar:
         try:
-            st.image("logo.png", width=10)
+            st.image("logo.png", width=150)
         except:
             pass
 
