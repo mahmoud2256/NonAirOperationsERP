@@ -761,6 +761,7 @@ else:
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
         if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
+        pages.append("Support")
 
         for page in pages:
             if st.button(page, use_container_width=True, key=f"nav_{page}"):
@@ -792,3 +793,47 @@ else:
         st.dataframe(vendors_df, use_container_width=True, height=500)
     elif st.session_state.page == "Admin Panel":
         show_admin()
+    elif st.session_state.page == "Support":
+        st.markdown("""
+        <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+            <span style="color:white; font-size:20px; font-weight:700;">🎧 Technical Support</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:20px;">Contact Information</p>', unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">RESPONSIBLE PERSON</p>
+                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Mody</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #22C55E;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">PHONE NUMBER</p>
+                <p style="font-size:22px;font-weight:700;color:#1A7A4A;margin:8px 0 0 0;">010000000000</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">EMAIL</p>
+                <p style="font-size:18px;font-weight:700;color:#B45309;margin:8px 0 0 0;">Bright.Star@moonstone.com</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;">
+            <p style="color:#1A3A5C;font-weight:700;font-size:15px;margin:0 0 8px 0;">📋 Support Hours</p>
+            <p style="color:#374151;margin:0;font-size:14px;">Sunday – Thursday: 9:00 AM – 5:00 PM</p>
+            <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
+        </div>
+        """, unsafe_allow_html=True)
