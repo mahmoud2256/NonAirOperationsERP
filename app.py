@@ -19,7 +19,7 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87/@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
 @st.cache_resource
 def get_connection():
