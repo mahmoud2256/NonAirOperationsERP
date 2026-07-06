@@ -21,21 +21,21 @@ st.set_page_config(
 
 DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
-@st.cache_resource
 def get_connection():
-    return psycopg2.connect(DB_URL)
+    conn = psycopg2.connect(DB_URL)
+    conn.autocommit = True
+    return conn
 
 def get_cursor():
     conn = get_connection()
-    conn.autocommit = True
-    return conn.cursor()
-
+    return conn, conn.cursor()
+    
 # =========================================================
 # CREATE TABLES
 # =========================================================
 
 def create_tables():
-    cur = get_cursor()
+    conn, cur = get_cursor()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -324,7 +324,7 @@ def show_login():
             submit = st.form_submit_button("Login", use_container_width=True)
 
             if submit:
-                cur = get_cursor()
+                conn, cur = get_cursor()
                 cur.execute(
                     "SELECT * FROM users WHERE username=%s AND password=%s",
                     (username, password)
@@ -345,7 +345,7 @@ def show_dashboard():
     st.markdown("# Operations Dashboard")
     st.markdown("**Kanoo Travel  •  Non-Air Operations**")
 
-    cur = get_cursor()
+    conn, cur = get_cursor()
     cur.execute("""
     SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
     FROM invoices
@@ -596,7 +596,7 @@ def show_invoices():
         if not invoice_no or not vendor or not accounts_val:
             st.error("⚠️ Please fill Invoice No, Vendor, and Accounts")
         else:
-            cur = get_cursor()
+            conn, cur = get_cursor()
             cur.execute("""
             INSERT INTO invoices (
                 date, invoice_no, owner, accounts, service_date,
@@ -624,7 +624,7 @@ def show_reports():
 
     search = st.text_input("🔍 Search by Vendor, Account, or Invoice No")
 
-    cur = get_cursor()
+    conn, cur = get_cursor()
 
     if search:
         cur.execute("""
@@ -674,7 +674,7 @@ def show_reports():
 def show_admin():
     st.markdown("# Admin Panel")
 
-    cur = get_cursor()
+    conn, cur = get_cursor()
 
     st.markdown("### Add New User")
     col1, col2, col3 = st.columns([2, 2, 1])
