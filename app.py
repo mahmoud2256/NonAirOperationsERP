@@ -2,6 +2,20 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 from datetime import date, datetime
+import io
+import urllib.parse
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    REPORTLAB_AVAILABLE = True
+except:
+    REPORTLAB_AVAILABLE = False
+
+SUPPORT_WHATSAPP = "201009538924"
 
 # =========================================================
 # PAGE CONFIG
@@ -19,23 +33,23 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
+@st.cache_resource
 def get_connection():
-    conn = psycopg2.connect(DB_URL)
-    conn.autocommit = True
-    return conn
+    return psycopg2.connect(DB_URL)
 
 def get_cursor():
     conn = get_connection()
-    return conn, conn.cursor()
-    
+    conn.autocommit = True
+    return conn.cursor()
+
 # =========================================================
 # CREATE TABLES
 # =========================================================
 
 def create_tables():
-    conn, cur = get_cursor()
+    cur = get_cursor()
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -72,7 +86,7 @@ def create_tables():
 
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Mahmoud', '1234')
+    VALUES ('Bassma', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -310,21 +324,72 @@ if "logged_in" not in st.session_state:
 # =========================================================
 
 def show_login():
-    col1, col2, col3 = st.columns([1, 1.5, 1])
+
+    st.markdown("""
+    <style>
+        .stApp { background: linear-gradient(135deg, #0f172a 0%, #1A3A5C 100%) !important; }
+        .main .block-container { padding-top: 0 !important; }
+
+        .login-container {
+            max-width: 420px;
+            margin: 60px auto;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 40px;
+            backdrop-filter: blur(10px);
+        }
+
+        .login-title {
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            margin: 16px 0 4px 0;
+        }
+
+        .login-subtitle {
+            color: #93C5FD;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .stTextInput label { color: #CBD5E1 !important; font-size: 13px !important; }
+        .stTextInput input {
+            background: rgba(255,255,255,0.08) !important;
+            border: 1px solid rgba(255,255,255,0.2) !important;
+            color: white !important;
+            border-radius: 6px !important;
+        }
+        .stTextInput input:focus {
+            border-color: #3B82F6 !important;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.3) !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.image("logo.png", width=120)
-        st.markdown("## Non-Air Operations ERP")
-        st.markdown("##### Bright Star")
-        st.markdown("<br>", unsafe_allow_html=True)
+
+        try:
+            st.image("logo.png", use_container_width=True)
+        except:
+            pass
+
+        st.markdown("""
+        <div class="login-title">Non-Air Operations ERP</div>
+        <div class="login-subtitle">Bright Star • Non-Air Operations</div>
+        """, unsafe_allow_html=True)
 
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login", use_container_width=True)
+            submit = st.form_submit_button("🔐  Sign In", use_container_width=True)
 
             if submit:
-                conn, cur = get_cursor()
+                cur = get_cursor()
                 cur.execute(
                     "SELECT * FROM users WHERE username=%s AND password=%s",
                     (username, password)
@@ -335,17 +400,141 @@ def show_login():
                     st.session_state.current_user = username
                     st.rerun()
                 else:
-                    st.error("Invalid username or password")
+                    st.error("❌ Invalid username or password")
 
 # =========================================================
 # DASHBOARD PAGE
 # =========================================================
 
-def show_dashboard():
-    st.markdown("# Operations Dashboard")
-    st.markdown("**Bright Star  •  Non-Air Operations**")
+def generate_invoice_pdf(data):
 
-    conn, cur = get_cursor()
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.5*cm,
+        leftMargin=1.5*cm,
+        topMargin=1.5*cm,
+        bottomMargin=1.5*cm
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Title
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Normal'],
+        fontSize=18,
+        textColor=colors.HexColor('#1A3A5C'),
+        spaceAfter=6,
+        fontName='Helvetica-Bold'
+    )
+
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor('#6B7280'),
+        spaceAfter=16,
+        fontName='Helvetica'
+    )
+
+    elements.append(Paragraph("Non-Air Operations ERP", title_style))
+    elements.append(Paragraph("Bright Star • Vendor Invoice", subtitle_style))
+    elements.append(Spacer(1, 0.3*cm))
+
+    # Invoice details table
+    table_data = [
+        ["FIELD", "VALUE"],
+        ["Invoice No", data.get("invoice_no", "")],
+        ["Date", data.get("date", "")],
+        ["Owner", data.get("owner", "")],
+        ["Accounts", data.get("accounts", "")],
+        ["Date of Service", data.get("service_date", "")],
+        ["Subject", data.get("subject", "")],
+        ["Type of Service", data.get("service_type", "")],
+        ["Vendor", data.get("supplier", "")],
+        ["City", data.get("supplier_city", "")],
+        ["No. of PAX", str(data.get("no_of_pax", ""))],
+        ["Supplier Invoice No", data.get("supplier_invoice_no", "")],
+        ["PO", data.get("po_number", "")],
+        ["Currency", data.get("currency", "EGP")],
+    ]
+
+    table = Table(table_data, colWidths=[6*cm, 11*cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A3A5C')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8FAFC'), colors.white]),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#374151')),
+        ('TEXTCOLOR', (1, 1), (1, -1), colors.HexColor('#1A1A2E')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E4EA')),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 20),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(table)
+    elements.append(Spacer(1, 0.5*cm))
+
+    # Financial summary table
+    fin_data = [
+        ["FINANCIAL SUMMARY", ""],
+        ["Paid To Supplier", f"{data.get('paid_to_supplier', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["Handling Fees", f"{data.get('handling_fees', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["VAT (14%)", f"{data.get('vat', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["TOTAL AMOUNT", f"{data.get('total_amount', 0):,.2f} {data.get('currency', 'EGP')}"],
+    ]
+
+    fin_table = Table(fin_data, colWidths=[6*cm, 11*cm])
+    fin_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A3A5C')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('SPAN', (0, 0), (1, 0)),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#EFF6FF')),
+        ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 4), (-1, 4), 11),
+        ('TEXTCOLOR', (0, 4), (-1, 4), colors.HexColor('#1A3A5C')),
+        ('FONTNAME', (0, 1), (0, 3), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 3), 9),
+        ('ROWBACKGROUNDS', (0, 1), (-1, 3), [colors.HexColor('#F8FAFC'), colors.white]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E4EA')),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 22),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(fin_table)
+    elements.append(Spacer(1, 0.5*cm))
+
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#9CA3AF'),
+        fontName='Helvetica'
+    )
+    elements.append(Paragraph(
+        f"Generated by Non-Air Operations ERP  •  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        footer_style
+    ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+    st.markdown("# Operations Dashboard")
+    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
+
+    cur = get_cursor()
     cur.execute("""
     SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
     FROM invoices
@@ -596,7 +785,7 @@ def show_invoices():
         if not invoice_no or not vendor or not accounts_val:
             st.error("⚠️ Please fill Invoice No, Vendor, and Accounts")
         else:
-            conn, cur = get_cursor()
+            cur = get_cursor()
             cur.execute("""
             INSERT INTO invoices (
                 date, invoice_no, owner, accounts, service_date,
@@ -615,6 +804,62 @@ def show_invoices():
             st.success("✅ Invoice Generated Successfully!")
             st.balloons()
 
+            invoice_data = {
+                "invoice_no": invoice_no,
+                "date": str(inv_date),
+                "owner": owner,
+                "accounts": accounts_val,
+                "service_date": str(service_date),
+                "subject": subject,
+                "service_type": service_type,
+                "supplier": vendor,
+                "supplier_city": vendor_city or city,
+                "no_of_pax": pax,
+                "supplier_invoice_no": supplier_inv_no,
+                "po_number": po,
+                "total_amount": total,
+                "paid_to_supplier": paid_to_supplier,
+                "handling_fees": handling_fees,
+                "vat": vat,
+                "currency": currency,
+            }
+
+            col_pdf, col_wa, col_empty = st.columns([1, 1, 2])
+
+            with col_pdf:
+                if REPORTLAB_AVAILABLE:
+                    pdf_buffer = generate_invoice_pdf(invoice_data)
+                    st.download_button(
+                        label="📄 Download PDF",
+                        data=pdf_buffer,
+                        file_name=f"Invoice_{invoice_no}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("PDF not available")
+
+            with col_wa:
+                wa_message = (
+                    f"✅ New Invoice Generated\n\n"
+                    f"Invoice No: {invoice_no}\n"
+                    f"Date: {inv_date}\n"
+                    f"Vendor: {vendor}\n"
+                    f"Account: {accounts_val}\n"
+                    f"Total: {total:,.2f} {currency}\n"
+                    f"VAT: {vat:,.2f}\n"
+                    f"Handling: {handling_fees:,.2f}\n\n"
+                    f"Generated by Non-Air Operations ERP"
+                )
+                wa_url = f"https://wa.me/{SUPPORT_WHATSAPP}?text={urllib.parse.quote(wa_message)}"
+                st.markdown(
+                    f'<a href="{wa_url}" target="_blank">'
+                    f'<button style="width:100%;background:#25D366;color:white;border:none;'
+                    f'padding:8px;border-radius:4px;font-weight:600;font-size:14px;cursor:pointer;">'
+                    f'📱 Send WhatsApp</button></a>',
+                    unsafe_allow_html=True
+                )
+
 # =========================================================
 # REPORTS PAGE
 # =========================================================
@@ -624,7 +869,7 @@ def show_reports():
 
     search = st.text_input("🔍 Search by Vendor, Account, or Invoice No")
 
-    conn, cur = get_cursor()
+    cur = get_cursor()
 
     if search:
         cur.execute("""
@@ -674,7 +919,7 @@ def show_reports():
 def show_admin():
     st.markdown("# Admin Panel")
 
-    conn, cur = get_cursor()
+    cur = get_cursor()
 
     st.markdown("### Add New User")
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -707,7 +952,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Mahmoud"]
+            [u[1] for u in users if u[1] != "Bassma"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -759,7 +1004,7 @@ else:
         """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
-        if st.session_state.current_user == "Mahmoud":
+        if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
         pages.append("Support")
 
@@ -837,3 +1082,4 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
+
