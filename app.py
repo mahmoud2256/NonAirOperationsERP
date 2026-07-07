@@ -414,10 +414,13 @@ def show_login():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        try:
-            st.image("logo.png", use_container_width=True)
-        except:
-            pass
+        # Logo - smaller and centered
+        logo_col1, logo_col2, logo_col3 = st.columns([1, 1, 1])
+        with logo_col2:
+            try:
+                st.image("logo.png", use_container_width=True)
+            except:
+                pass
 
         st.markdown("""
         <div style="text-align:center; margin: 16px 0 28px 0;">
@@ -1173,3 +1176,4 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
+
