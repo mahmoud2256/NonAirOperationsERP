@@ -33,7 +33,7 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
 @st.cache_resource
 def get_connection():
@@ -146,7 +146,7 @@ def load_issuers():
 def load_accounts():
     try:
         df = pd.read_excel("accounts.xlsx").fillna("")
-        return df["Accounts"].tolist()
+        return [str(x) for x in df["Accounts"].tolist() if str(x).strip() != ""]
     except:
         return []
 
@@ -357,14 +357,18 @@ def show_login():
 
         .stTextInput label { color: #CBD5E1 !important; font-size: 13px !important; }
         .stTextInput input {
-            background: rgba(255,255,255,0.08) !important;
-            border: 1px solid rgba(255,255,255,0.2) !important;
-            color: white !important;
+            background: rgba(255,255,255,0.15) !important;
+            border: 1px solid rgba(255,255,255,0.3) !important;
+            color: #1A1A2E !important;
             border-radius: 6px !important;
+            caret-color: #1A3A5C !important;
         }
+        .stTextInput input::placeholder { color: #94A3B8 !important; }
         .stTextInput input:focus {
             border-color: #3B82F6 !important;
             box-shadow: 0 0 0 2px rgba(59,130,246,0.3) !important;
+            background: white !important;
+            color: #1A1A2E !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -1082,4 +1086,3 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
-
