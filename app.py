@@ -86,7 +86,7 @@ def create_tables():
 
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Mahmoud', '1234')
+    VALUES ('Bassma', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -288,11 +288,20 @@ st.markdown("""
         color: #1A3A5C !important;
     }
 
-    /* ===== HIDE GITHUB ICON ===== */
-    .stToolbarActions [data-testid="stBaseButton-github"],
-    [data-testid="stToolbar"] a[href*="github"],
-    .stAppToolbar a[href*="github"] {
-        display: none !important;
+    /* ===== HIDE TOOLBAR ICONS ===== */
+    .stToolbarActions {
+        opacity: 0.05 !important;
+        transition: opacity 0.3s !important;
+    }
+    .stToolbarActions:hover {
+        opacity: 0.3 !important;
+    }
+    [data-testid="stStatusWidget"] {
+        opacity: 0.05 !important;
+        transition: opacity 0.3s !important;
+    }
+    [data-testid="stStatusWidget"]:hover {
+        opacity: 0.3 !important;
     }
 
     /* ===== ALERTS ===== */
@@ -958,7 +967,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Mahmoud"]
+            [u[1] for u in users if u[1] != "Bassma"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -1010,7 +1019,7 @@ else:
         """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
-        if st.session_state.current_user == "Mahmoud":
+        if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
         pages.append("Support")
 
@@ -1088,4 +1097,3 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
-
