@@ -86,7 +86,7 @@ def create_tables():
 
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Mahmoud', '1234')
+    VALUES ('Bassma', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -336,55 +336,83 @@ def show_login():
 
     st.markdown("""
     <style>
-        .stApp { background: linear-gradient(135deg, #0f172a 0%, #1A3A5C 100%) !important; }
-        .main .block-container { padding-top: 0 !important; }
-
-        .login-container {
-            max-width: 420px;
-            margin: 60px auto;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            padding: 40px;
-            backdrop-filter: blur(10px);
+        .stApp {
+            background: linear-gradient(160deg, #0f172a 0%, #1A3A5C 60%, #0f172a 100%) !important;
         }
 
-        .login-title {
-            color: white;
-            font-size: 24px;
-            font-weight: 700;
-            text-align: center;
-            margin: 16px 0 4px 0;
+        .main .block-container {
+            padding-top: 0 !important;
+            max-width: 480px !important;
+            margin: 0 auto !important;
         }
 
-        .login-subtitle {
-            color: #93C5FD;
-            font-size: 13px;
-            text-align: center;
-            margin-bottom: 28px;
-        }
-
-        .stTextInput label { color: #CBD5E1 !important; font-size: 13px !important; }
+        /* Input fields - dark visible text */
         .stTextInput input {
-            background: rgba(255,255,255,0.15) !important;
-            border: 1px solid rgba(255,255,255,0.3) !important;
-            color: #1A1A2E !important;
-            border-radius: 6px !important;
-            caret-color: #1A3A5C !important;
-        }
-        .stTextInput input::placeholder { color: #94A3B8 !important; }
-        .stTextInput input:focus {
-            border-color: #3B82F6 !important;
-            box-shadow: 0 0 0 2px rgba(59,130,246,0.3) !important;
             background: white !important;
+            border: 2px solid #E2E8F0 !important;
+            border-radius: 8px !important;
             color: #1A1A2E !important;
+            font-size: 15px !important;
+            font-weight: 500 !important;
+            padding: 12px 16px !important;
+            height: 48px !important;
+        }
+
+        .stTextInput input:focus {
+            border-color: #1A3A5C !important;
+            box-shadow: 0 0 0 3px rgba(26,58,92,0.15) !important;
+            outline: none !important;
+        }
+
+        .stTextInput input::placeholder {
+            color: #94A3B8 !important;
+            font-weight: 400 !important;
+        }
+
+        /* Labels */
+        .stTextInput label {
+            color: #CBD5E1 !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px !important;
+            text-transform: uppercase !important;
+        }
+
+        /* Sign In button */
+        .stFormSubmitButton button {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2563EB 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.5px !important;
+            height: 50px !important;
+            width: 100% !important;
+            cursor: pointer !important;
+            transition: all 0.2s !important;
+        }
+
+        .stFormSubmitButton button:hover {
+            opacity: 0.9 !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Form container */
+        div[data-testid="stForm"] {
+            background: rgba(255,255,255,0.07) !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            border-radius: 16px !important;
+            padding: 32px 28px !important;
+            backdrop-filter: blur(20px) !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([0.5, 3, 0.5])
     with col2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
 
         try:
             st.image("logo.png", use_container_width=True)
@@ -392,13 +420,39 @@ def show_login():
             pass
 
         st.markdown("""
-        <div class="login-title">Non-Air Operations ERP</div>
-        <div class="login-subtitle">Bright Star • Non-Air Operations</div>
+        <div style="text-align:center; margin: 16px 0 28px 0;">
+            <div style="
+                color: white;
+                font-size: 26px;
+                font-weight: 800;
+                letter-spacing: 0.3px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            ">Non-Air Operations ERP</div>
+            <div style="
+                color: #93C5FD;
+                font-size: 13px;
+                font-weight: 500;
+                margin-top: 6px;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            ">Bright Star • Non-Air Operations</div>
+            <div style="
+                width: 40px;
+                height: 3px;
+                background: linear-gradient(90deg, #3B82F6, #1A3A5C);
+                margin: 12px auto 0 auto;
+                border-radius: 2px;
+            "></div>
+        </div>
         """, unsafe_allow_html=True)
 
         with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
+
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
             submit = st.form_submit_button("🔐  Sign In", use_container_width=True)
 
             if submit:
@@ -413,7 +467,29 @@ def show_login():
                     st.session_state.current_user = username
                     st.rerun()
                 else:
-                    st.error("❌ Invalid username or password")
+                    st.markdown("""
+                    <div style="
+                        background: rgba(239,68,68,0.15);
+                        border: 1px solid rgba(239,68,68,0.4);
+                        border-radius: 8px;
+                        padding: 10px 14px;
+                        color: #FCA5A5;
+                        font-size: 13px;
+                        font-weight: 600;
+                        text-align: center;
+                        margin-top: 8px;
+                    ">❌ Invalid username or password</div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="
+            text-align: center;
+            margin-top: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        ">© 2026 Bright Star — Non-Air Operations ERP</div>
+        """, unsafe_allow_html=True)
 
 # =========================================================
 # DASHBOARD PAGE
@@ -967,7 +1043,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Mahmoud"]
+            [u[1] for u in users if u[1] != "Bassma"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -1019,7 +1095,7 @@ else:
         """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
-        if st.session_state.current_user == "Mahmoud":
+        if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
         pages.append("Support")
 
