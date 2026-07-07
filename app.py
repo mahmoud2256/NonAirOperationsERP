@@ -33,7 +33,7 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
 @st.cache_resource
 def get_connection():
@@ -535,8 +535,10 @@ def generate_invoice_pdf(data):
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
+def show_dashboard():
+
     st.markdown("# Operations Dashboard")
-    st.markdown("**Kanoo Travel  •  Non-Air Operations**")
 
     cur = get_cursor()
     cur.execute("""
@@ -1086,3 +1088,4 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
+
