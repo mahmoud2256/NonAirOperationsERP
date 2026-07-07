@@ -86,7 +86,7 @@ def create_tables():
 
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Bassma', '1234')
+    VALUES ('Mahmoud', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -967,7 +967,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Bassma"]
+            [u[1] for u in users if u[1] != "Mahmoud"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -1019,7 +1019,7 @@ else:
         """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
-        if st.session_state.current_user == "Bassma":
+        if st.session_state.current_user == "Mahmoud":
             pages.append("Admin Panel")
         pages.append("Support")
 
