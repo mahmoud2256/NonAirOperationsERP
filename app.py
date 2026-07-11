@@ -31,18 +31,13 @@ st.set_page_config(
 # =========================================================
 # DATABASE CONNECTION
 # =========================================================
-# DATABASE CONNECTION
-# =========================================================
+# ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = st.secrets["DATABASE_URL"]
+DATABASE_URL = "postgresql://postgres.edoljqkvyxtwrvphwdp:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
 
 def get_cursor():
     try:
-        conn = psycopg2.connect(
-            DB_URL,
-            connect_timeout=30,
-            sslmode='require'
-        )
+        conn = psycopg2.connect(DB_URL, connect_timeout=10)
         conn.autocommit = True
         return conn.cursor()
     except Exception as e:
