@@ -2,7 +2,6 @@
 # NON AIR OPERATIONS ERP - FINAL VERSION
 # =========================================================
 
-from tkinter import *
 from tkinter import ttk, messagebox, filedialog
 from tkcalendar import DateEntry
 from PIL import Image, ImageTk
