@@ -33,7 +33,7 @@ st.set_page_config(
 # =========================================================
 # ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
 
-DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
 @st.cache_resource
 def get_connection():
@@ -84,9 +84,38 @@ def create_tables():
     )
     """)
 
+    # Treasury accounts (banks + cash boxes)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_accounts (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE,
+        type TEXT,
+        currency TEXT DEFAULT 'EGP',
+        opening_balance REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Treasury transactions
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_transactions (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        type TEXT,
+        account_id INTEGER REFERENCES treasury_accounts(id),
+        to_account_id INTEGER REFERENCES treasury_accounts(id),
+        amount REAL,
+        currency TEXT DEFAULT 'EGP',
+        description TEXT,
+        invoice_no TEXT,
+        created_by TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Mahmoud', '1234')
+    VALUES ('Bassma', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -624,7 +653,216 @@ def generate_invoice_pdf(data):
     buffer.seek(0)
     return buffer
 
-def show_dashboard():
+def show_treasury():
+
+    st.markdown("""
+    <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+        <span style="color:white; font-size:20px; font-weight:700;">🏦 Treasury Management</span>
+        <span style="color:#93C5FD; font-size:13px; margin-left:16px;">Banks & Cash Boxes</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cur = get_cursor()
+    tab1, tab2, tab3 = st.tabs(["📊 Overview", "💳 New Transaction", "⚙️ Manage Accounts"])
+
+    # ── TAB 1: OVERVIEW ────────────────────────────────────
+    with tab1:
+
+        cur.execute("SELECT id, name, type, currency, opening_balance FROM treasury_accounts ORDER BY type, name")
+        accounts = cur.fetchall()
+
+        if not accounts:
+            st.info("No accounts yet. Go to 'Manage Accounts' to add banks and cash boxes.")
+        else:
+            banks = [a for a in accounts if a[2] == "Bank"]
+            cash_boxes = [a for a in accounts if a[2] == "Cash"]
+
+            def get_balance(account_id, opening_balance):
+                cur.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN account_id = %s AND type IN ('Deposit','Receipt','Transfer_In') THEN amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN account_id = %s AND type IN ('Withdrawal','Payment','Transfer_Out') THEN amount ELSE 0 END), 0)
+                FROM treasury_transactions
+                WHERE account_id = %s OR to_account_id = %s
+                """, (account_id, account_id, account_id, account_id))
+                movements = cur.fetchone()[0] or 0
+                return opening_balance + movements
+
+            # Banks
+            if banks:
+                st.markdown('<p class="section-label">🏦 Banks</p>', unsafe_allow_html=True)
+                cols = st.columns(min(len(banks), 3))
+                for i, bank in enumerate(banks):
+                    balance = get_balance(bank[0], bank[4])
+                    color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                            <p style="font-size:13px;color:#6B7280;font-weight:700;margin:0;">{bank[1]}</p>
+                            <p style="font-size:24px;font-weight:800;color:{color};margin:8px 0 0 0;">{balance:,.2f}</p>
+                            <p style="font-size:11px;color:#94A3B8;margin:4px 0 0 0;">{bank[3]}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            # Cash Boxes
+            if cash_boxes:
+                st.markdown('<p class="section-label">💰 Cash Boxes</p>', unsafe_allow_html=True)
+                cols = st.columns(min(len(cash_boxes), 3))
+                for i, cash in enumerate(cash_boxes):
+                    balance = get_balance(cash[0], cash[4])
+                    color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                            <p style="font-size:13px;color:#6B7280;font-weight:700;margin:0;">{cash[1]}</p>
+                            <p style="font-size:24px;font-weight:800;color:{color};margin:8px 0 0 0;">{balance:,.2f}</p>
+                            <p style="font-size:11px;color:#94A3B8;margin:4px 0 0 0;">{cash[3]}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+            # Recent transactions
+            st.markdown('<p class="section-label">Recent Transactions</p>', unsafe_allow_html=True)
+            cur.execute("""
+            SELECT t.date, t.type, a.name, b.name, t.amount, t.currency, t.description, t.invoice_no
+            FROM treasury_transactions t
+            LEFT JOIN treasury_accounts a ON t.account_id = a.id
+            LEFT JOIN treasury_accounts b ON t.to_account_id = b.id
+            ORDER BY t.id DESC LIMIT 20
+            """)
+            rows = cur.fetchall()
+            if rows:
+                df = pd.DataFrame(rows, columns=["Date", "Type", "Account", "To Account", "Amount", "Currency", "Description", "Invoice No"])
+                st.dataframe(df, use_container_width=True, height=350)
+            else:
+                st.info("No transactions yet.")
+
+    # ── TAB 2: NEW TRANSACTION ─────────────────────────────
+    with tab2:
+
+        cur.execute("SELECT id, name, type, currency FROM treasury_accounts ORDER BY type, name")
+        all_accounts = cur.fetchall()
+
+        if not all_accounts:
+            st.warning("Please add accounts first from 'Manage Accounts' tab.")
+        else:
+            account_names = {f"{a[1]} ({a[2]})": a[0] for a in all_accounts}
+
+            st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:16px;">Transaction Details</p>', unsafe_allow_html=True)
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                t_date = st.date_input("Date", value=date.today(), key="t_date")
+            with c2:
+                t_type = st.selectbox("Transaction Type", [
+                    "Deposit", "Withdrawal", "Payment",
+                    "Receipt", "Transfer"
+                ], key="t_type")
+            with c3:
+                t_currency = st.selectbox("Currency", ["EGP", "USD"], key="t_currency")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                from_account = st.selectbox(
+                    "From Account" if t_type == "Transfer" else "Account",
+                    list(account_names.keys()),
+                    key="t_from"
+                )
+            with c2:
+                if t_type == "Transfer":
+                    to_account = st.selectbox("To Account", list(account_names.keys()), key="t_to")
+                else:
+                    to_account = None
+
+            c1, c2 = st.columns(2)
+            with c1:
+                t_amount = st.number_input("Amount", min_value=0.0, step=0.01, key="t_amount")
+            with c2:
+                t_invoice = st.text_input("Invoice No (if linked)", key="t_invoice")
+
+            t_desc = st.text_input("Description", key="t_desc")
+
+            if st.button("✅ Save Transaction", use_container_width=True, type="primary"):
+                if t_amount <= 0:
+                    st.error("Amount must be greater than 0")
+                else:
+                    from_id = account_names[from_account]
+                    to_id = account_names[to_account] if to_account else None
+
+                    # Determine transaction type for from/to
+                    db_type = t_type
+                    if t_type == "Transfer":
+                        # Insert outgoing
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, to_account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), "Transfer_Out", from_id, to_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+                        # Insert incoming
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, to_account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), "Transfer_In", to_id, from_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+                    else:
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), db_type, from_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+
+                    # If payment linked to invoice, mark as paid
+                    if t_type == "Payment" and t_invoice:
+                        cur.execute("""
+                        UPDATE invoices SET payment_status = 'Paid'
+                        WHERE invoice_no = %s
+                        """, (t_invoice,))
+
+                    st.success("✅ Transaction saved successfully!")
+                    st.rerun()
+
+    # ── TAB 3: MANAGE ACCOUNTS ─────────────────────────────
+    with tab3:
+
+        st.markdown("### Add New Account")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            acc_name = st.text_input("Account Name", placeholder="e.g. CIB Bank")
+        with c2:
+            acc_type = st.selectbox("Type", ["Bank", "Cash"])
+        with c3:
+            acc_currency = st.selectbox("Currency", ["EGP", "USD"], key="acc_cur")
+        with c4:
+            acc_opening = st.number_input("Opening Balance", min_value=0.0, step=0.01)
+
+        if st.button("➕ Add Account", use_container_width=True):
+            if acc_name.strip():
+                try:
+                    cur.execute("""
+                    INSERT INTO treasury_accounts (name, type, currency, opening_balance)
+                    VALUES (%s, %s, %s, %s)
+                    """, (acc_name.strip(), acc_type, acc_currency, acc_opening))
+                    st.success(f"✅ Account '{acc_name}' added!")
+                    st.rerun()
+                except:
+                    st.error("Account name already exists")
+            else:
+                st.warning("Please enter account name")
+
+        st.markdown("### Current Accounts")
+        cur.execute("SELECT id, name, type, currency, opening_balance FROM treasury_accounts ORDER BY type, name")
+        accs = cur.fetchall()
+        if accs:
+            df = pd.DataFrame(accs, columns=["ID", "Name", "Type", "Currency", "Opening Balance"])
+            st.dataframe(df, use_container_width=True)
+
+            del_id = st.selectbox("Select account to delete", [f"{a[0]} - {a[1]}" for a in accs])
+            if st.button("🗑️ Delete Account", type="primary"):
+                del_account_id = int(del_id.split(" - ")[0])
+                cur.execute("DELETE FROM treasury_accounts WHERE id = %s", (del_account_id,))
+                st.success("Account deleted!")
+                st.rerun()
+        else:
+            st.info("No accounts yet.")
 
     st.markdown("# Operations Dashboard")
 
@@ -659,6 +897,52 @@ def show_dashboard():
             <p class="metric-label">Invoices Count</p>
         </div>
         """, unsafe_allow_html=True)
+
+    # Treasury quick view
+    cur.execute("""
+    SELECT a.name, a.type, a.currency, a.opening_balance,
+        COALESCE((
+            SELECT SUM(CASE
+                WHEN type IN ('Deposit','Receipt','Transfer_In') THEN amount
+                WHEN type IN ('Withdrawal','Payment','Transfer_Out') THEN -amount
+                ELSE 0 END)
+            FROM treasury_transactions t WHERE t.account_id = a.id
+        ), 0) as movements
+    FROM treasury_accounts a ORDER BY a.type, a.name
+    """)
+    treasury_accs = cur.fetchall()
+
+    if treasury_accs:
+        banks_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Bank"]
+        cash_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Cash"]
+
+        if banks_data:
+            st.markdown('<p class="section-label">🏦 Bank Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(banks_data), 4))
+            for i, (name, currency, balance) in enumerate(banks_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        if cash_data:
+            st.markdown('<p class="section-label">💰 Cash Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(cash_data), 4))
+            for i, (name, currency, balance) in enumerate(cash_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
 
@@ -1046,7 +1330,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Mahmoud"]
+            [u[1] for u in users if u[1] != "Bassma"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -1097,8 +1381,8 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        pages = ["Dashboard", "Invoices", "Reports", "Vendors"]
-        if st.session_state.current_user == "Mahmoud":
+        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury"]
+        if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
         pages.append("Support")
 
@@ -1130,6 +1414,8 @@ else:
         vendors_df = load_vendors()
         st.markdown("# Vendors")
         st.dataframe(vendors_df, use_container_width=True, height=500)
+    elif st.session_state.page == "Treasury":
+        show_treasury()
     elif st.session_state.page == "Admin Panel":
         show_admin()
     elif st.session_state.page == "Support":
@@ -1176,4 +1462,3 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
-
