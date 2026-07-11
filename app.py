@@ -1,2172 +1,1607 @@
-# =========================================================
-# NON AIR OPERATIONS ERP - FINAL VERSION
-# =========================================================
-
-from tkinter import ttk, messagebox, filedialog
-from tkcalendar import DateEntry
-from PIL import Image, ImageTk
+import streamlit as st
+import psycopg2
 import pandas as pd
-import sqlite3
+from datetime import date, datetime
+import io
+import urllib.parse
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    REPORTLAB_AVAILABLE = True
+except:
+    REPORTLAB_AVAILABLE = False
+
+SUPPORT_WHATSAPP = "201009538924"
 
 # =========================================================
-# DATABASE
+# PAGE CONFIG
 # =========================================================
 
-conn = sqlite3.connect("non_air_erp.db")
-
-cursor = conn.cursor()
-
-# =========================================================
-# INVOICES TABLE
-# =========================================================
-
-cursor.execute("""
-
-CREATE TABLE IF NOT EXISTS invoices (
-
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    date TEXT,
-    invoice_no TEXT,
-    owner TEXT,
-    accounts TEXT,
-    service_date TEXT,
-    subject TEXT,
-    service_type TEXT,
-    supplier TEXT,
-    supplier_city TEXT,
-    no_of_pax INTEGER,
-    supplier_invoice_no TEXT,
-    po_number TEXT,
-    total_amount REAL,
-    paid_to_supplier REAL,
-    handling_fees REAL,
-    vat REAL,
-    currency TEXT,
-    payment_status TEXT,
-    created_by TEXT
-
+st.set_page_config(
+    page_title="Non-Air Operations ERP",
+    page_icon="✈️",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-""")
+# =========================================================
+# DATABASE CONNECTION
+# =========================================================
+# ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
+
+DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+
+def get_cursor():
+    try:
+        conn = psycopg2.connect(DB_URL, connect_timeout=10)
+        conn.autocommit = True
+        return conn.cursor()
+    except Exception as e:
+        st.error(f"Database connection error: {e}")
+        st.stop()
 
 # =========================================================
-# USERS TABLE
+# CREATE TABLES
 # =========================================================
 
-cursor.execute("""
+def create_tables():
+    cur = get_cursor()
 
-CREATE TABLE IF NOT EXISTS users (
-
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    username TEXT UNIQUE,
-    password TEXT
-
-)
-
-""")
-
-conn.commit()
-
-# =========================================================
-# LOAD FILES
-# =========================================================
-
-vendors_df = pd.read_excel("vendors.xlsx").fillna("")
-
-issuers_df = pd.read_excel("issuers.xlsx").fillna("")
-
-accounts_df = pd.read_excel("accounts.xlsx").fillna("")
-
-if "City" not in vendors_df.columns:
-
-    vendors_df["City"] = ""
-
-vendors = vendors_df["Alias"].astype(str).tolist()
-
-issuers = issuers_df.iloc[:, 0].astype(str).tolist()
-
-accounts = accounts_df.iloc[:, 0].astype(str).tolist()
-
-# =========================================================
-# AUTO CREATE USERS
-# =========================================================
-
-for issuer in issuers:
-
-    cursor.execute(
-        "SELECT * FROM users WHERE username=?",
-        (issuer,)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT
     )
+    """)
 
-    existing_user = cursor.fetchone()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS invoices (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        invoice_no TEXT,
+        owner TEXT,
+        accounts TEXT,
+        service_date TEXT,
+        subject TEXT,
+        service_type TEXT,
+        supplier TEXT,
+        supplier_city TEXT,
+        no_of_pax INTEGER,
+        supplier_invoice_no TEXT,
+        po_number TEXT,
+        total_amount REAL,
+        paid_to_supplier REAL,
+        handling_fees REAL,
+        vat REAL,
+        currency TEXT,
+        payment_status TEXT,
+        created_by TEXT
+    )
+    """)
 
-    if not existing_user:
+    # Treasury accounts (banks + cash boxes)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_accounts (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE,
+        type TEXT,
+        currency TEXT DEFAULT 'EGP',
+        opening_balance REAL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
-            (issuer, "1234")
-        )
+    # Treasury transactions
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS treasury_transactions (
+        id SERIAL PRIMARY KEY,
+        date TEXT,
+        type TEXT,
+        account_id INTEGER REFERENCES treasury_accounts(id),
+        to_account_id INTEGER REFERENCES treasury_accounts(id),
+        amount REAL,
+        currency TEXT DEFAULT 'EGP',
+        description TEXT,
+        invoice_no TEXT,
+        created_by TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
-conn.commit()
+    cur.execute("""
+    INSERT INTO users (username, password)
+    VALUES ('Bassma', '1234')
+    ON CONFLICT (username) DO NOTHING
+    """)
 
 # =========================================================
-# SEARCHABLE COMBOBOX
+# STATIC DATA
 # =========================================================
 
 EGYPT_GOVERNORATES = [
-    "Cairo",
-    "Giza",
-    "Alexandria",
-    "Qalyubia",
-    "Port Said",
-    "Suez",
-    "Damietta",
-    "Dakahlia",
-    "Sharqia",
-    "Gharbia",
-    "Monufia",
-    "Beheira",
-    "Ismailia",
-    "Kafr El Sheikh",
-    "North Sinai",
-    "South Sinai",
-    "Beni Suef",
-    "Faiyum",
-    "Minya",
-    "Asyut",
-    "Sohag",
-    "Qena",
-    "Luxor",
-    "Aswan",
-    "Red Sea",
-    "New Valley",
-    "Matrouh"
+    "Cairo", "Giza", "Alexandria", "Qalyubia", "Port Said",
+    "Suez", "Damietta", "Dakahlia", "Sharqia", "Gharbia",
+    "Monufia", "Beheira", "Ismailia", "Kafr El Sheikh",
+    "North Sinai", "South Sinai", "Beni Suef", "Faiyum",
+    "Minya", "Asyut", "Sohag", "Qena", "Luxor", "Aswan",
+    "Red Sea", "New Valley", "Matrouh"
 ]
 
-def add_hover_effect(widget, normal_color, hover_color):
+SERVICE_TYPES = [
+    "Hotel", "Flight", "Transfer", "Visa", "Insurance",
+    "Tour", "Restaurant", "Cruise", "Train", "Car Rental",
+    "Guide", "Entrance Fees", "Meet & Assist",
+    "Conference / MICE", "Other"
+]
 
-    widget.bind(
-        "<Enter>",
-        lambda e: widget.config(bg=hover_color)
-    )
+VAT_RATE = 0.14
 
-    widget.bind(
-        "<Leave>",
-        lambda e: widget.config(bg=normal_color)
-    )
-
-def searchable_combobox(combo, data):
-
-    def check_input(event):
-
-        value = combo.get()
-
-        if value == "":
-
-            combo["values"] = data
-
-        else:
-
-            filtered = []
-
-            for item in data:
-
-                if value.lower() in item.lower():
-
-                    filtered.append(item)
-
-            combo["values"] = filtered
-
-    combo.bind("<KeyRelease>", check_input)
+def get_handling_rate(account_name):
+    name = account_name.strip().upper()
+    if "ASTRA" in name:
+        return 0.049
+    elif "ACINO" in name:
+        return 0.05
+    return None
 
 # =========================================================
-# WINDOW
+# LOAD EXCEL FILES
 # =========================================================
 
-root = Tk()
+@st.cache_data
+def load_vendors():
+    try:
+        df = pd.read_excel("vendors.xlsx").fillna("")
+        if "City" not in df.columns:
+            df["City"] = ""
+        return df
+    except:
+        return pd.DataFrame(columns=["Alias", "City"])
 
-root.title("Non-Air Operations ERP")
+@st.cache_data
+def load_issuers():
+    try:
+        df = pd.read_excel("issuers.xlsx").fillna("")
+        return df["Issuer"].tolist()
+    except:
+        return []
 
-root.state("zoomed")
-
-root.configure(bg="#020617")
-
-# =========================================================
-# CURRENT USER
-# =========================================================
-
-current_user = ""
-
-# =========================================================
-# LOGIN
-# =========================================================
-
-def login():
-
-    global current_user
-
-    username = user_entry.get()
-
-    password = pass_entry.get()
-
-    cursor.execute(
-
-        "SELECT * FROM users WHERE username=? AND password=?",
-
-        (username, password)
-
-    )
-
-    user = cursor.fetchone()
-
-    if user:
-
-        current_user = username
-
-        login_frame.destroy()
-
-        open_system()
-
-    else:
-
-        messagebox.showerror(
-            "Login Failed",
-            "Wrong Username or Password"
-        )
+@st.cache_data
+def load_accounts():
+    try:
+        df = pd.read_excel("accounts.xlsx").fillna("")
+        return [str(x) for x in df["Accounts"].tolist() if str(x).strip() != ""]
+    except:
+        return []
 
 # =========================================================
-# MAIN SYSTEM
+# CSS STYLING
 # =========================================================
 
-def open_system():
+st.markdown("""
+<style>
+    /* ===== GLOBAL ===== */
+    .stApp {
+        background-color: #F5F6FA;
+        color: #1A1A2E;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }
 
-    # =====================================================
-    # SIDEBAR
-    # =====================================================
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
+    }
 
-    sidebar = Frame(
-        root,
-        bg="#020617",
-        width=230
+    /* ===== SIDEBAR ===== */
+    section[data-testid="stSidebar"] {
+        background-color: #1A3A5C;
+        border-right: none;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: transparent;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 4px;
+        font-weight: 500;
+        text-align: left;
+        padding: 8px 16px;
+        transition: all 0.2s;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background-color: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.4);
+    }
+
+    /* ===== METRIC CARDS ===== */
+    .metric-card {
+        background: white;
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+        padding: 20px 24px;
+        margin: 8px 0;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .metric-number {
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .metric-label {
+        font-size: 11px;
+        color: #6B7280;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin: 8px 0 0 0;
+        font-weight: 600;
+    }
+
+    .section-label {
+        font-size: 11px;
+        color: #6B7280;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        margin: 28px 0 10px 0;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #E0E4EA;
+    }
+
+    /* ===== FORM ===== */
+    div[data-testid="stForm"] {
+        background: white;
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+        padding: 24px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    /* ===== INPUTS ===== */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stNumberInput > div > div > input {
+        background-color: white;
+        border: 1px solid #D1D5DB;
+        border-radius: 4px;
+        color: #1A1A2E;
+        font-size: 14px;
+    }
+
+    /* ===== BUTTONS ===== */
+    .stButton > button {
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 13px;
+        border: 1px solid #1A3A5C;
+        background-color: #1A3A5C;
+        color: white;
+        padding: 8px 20px;
+        transition: all 0.2s;
+    }
+
+    .stButton > button:hover {
+        background-color: #14304F;
+        border-color: #14304F;
+    }
+
+    /* ===== DATAFRAME ===== */
+    .stDataFrame {
+        border: 1px solid #E0E4EA;
+        border-radius: 6px;
+    }
+
+    /* ===== PAGE TITLE ===== */
+    h1 {
+        color: #1A3A5C !important;
+        font-size: 26px !important;
+        font-weight: 700 !important;
+        border-bottom: 3px solid #1A3A5C;
+        padding-bottom: 10px;
+        margin-bottom: 4px !important;
+    }
+
+    h2, h3 {
+        color: #1A3A5C !important;
+    }
+
+    /* ===== HIDE TOOLBAR ICONS ===== */
+    .stToolbarActions {
+        opacity: 0.05 !important;
+        transition: opacity 0.3s !important;
+    }
+    .stToolbarActions:hover {
+        opacity: 0.3 !important;
+    }
+    [data-testid="stStatusWidget"] {
+        opacity: 0.05 !important;
+        transition: opacity 0.3s !important;
+    }
+    [data-testid="stStatusWidget"]:hover {
+        opacity: 0.3 !important;
+    }
+
+    /* ===== ALERTS ===== */
+    .stSuccess {
+        background-color: #ECFDF5;
+        border-left: 4px solid #10B981;
+        color: #065F46;
+    }
+
+    .stError {
+        background-color: #FEF2F2;
+        border-left: 4px solid #EF4444;
+        color: #991B1B;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.current_user = ""
+    st.session_state.page = "Dashboard"
+
+# =========================================================
+# LOGIN PAGE
+# =========================================================
+
+def show_login():
+
+    st.markdown("""
+    <style>
+        .stApp {
+            background: linear-gradient(160deg, #0f172a 0%, #1A3A5C 60%, #0f172a 100%) !important;
+        }
+
+        .main .block-container {
+            padding-top: 0 !important;
+            max-width: 480px !important;
+            margin: 0 auto !important;
+        }
+
+        /* Input fields - dark visible text */
+        .stTextInput input {
+            background: white !important;
+            border: 2px solid #E2E8F0 !important;
+            border-radius: 8px !important;
+            color: #1A1A2E !important;
+            font-size: 15px !important;
+            font-weight: 500 !important;
+            padding: 12px 16px !important;
+            height: 48px !important;
+        }
+
+        .stTextInput input:focus {
+            border-color: #1A3A5C !important;
+            box-shadow: 0 0 0 3px rgba(26,58,92,0.15) !important;
+            outline: none !important;
+        }
+
+        .stTextInput input::placeholder {
+            color: #94A3B8 !important;
+            font-weight: 400 !important;
+        }
+
+        /* Labels */
+        .stTextInput label {
+            color: #CBD5E1 !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px !important;
+            text-transform: uppercase !important;
+        }
+
+        /* Sign In button */
+        .stFormSubmitButton button {
+            background: linear-gradient(135deg, #1A3A5C 0%, #2563EB 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-size: 15px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.5px !important;
+            height: 50px !important;
+            width: 100% !important;
+            cursor: pointer !important;
+            transition: all 0.2s !important;
+        }
+
+        .stFormSubmitButton button:hover {
+            opacity: 0.9 !important;
+            transform: translateY(-1px) !important;
+        }
+
+        /* Form container */
+        div[data-testid="stForm"] {
+            background: rgba(255,255,255,0.07) !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            border-radius: 16px !important;
+            padding: 32px 28px !important;
+            backdrop-filter: blur(20px) !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([0.5, 3, 0.5])
+    with col2:
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Logo - smaller and centered
+        logo_col1, logo_col2, logo_col3 = st.columns([1, 1, 1])
+        with logo_col2:
+            try:
+                st.image("logo.png", use_container_width=True)
+            except:
+                pass
+
+        st.markdown("""
+        <div style="text-align:center; margin: 16px 0 28px 0;">
+            <div style="
+                color: white;
+                font-size: 26px;
+                font-weight: 800;
+                letter-spacing: 0.3px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            ">Non-Air Operations ERP</div>
+            <div style="
+                color: #93C5FD;
+                font-size: 13px;
+                font-weight: 500;
+                margin-top: 6px;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            ">Bright Star • Non-Air Operations</div>
+            <div style="
+                width: 40px;
+                height: 3px;
+                background: linear-gradient(90deg, #3B82F6, #1A3A5C);
+                margin: 12px auto 0 auto;
+                border-radius: 2px;
+            "></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("login_form"):
+
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            submit = st.form_submit_button("🔐  Sign In", use_container_width=True)
+
+            if submit:
+                cur = get_cursor()
+                cur.execute(
+                    "SELECT * FROM users WHERE username=%s AND password=%s",
+                    (username, password)
+                )
+                user = cur.fetchone()
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = username
+                    st.rerun()
+                else:
+                    st.markdown("""
+                    <div style="
+                        background: rgba(239,68,68,0.15);
+                        border: 1px solid rgba(239,68,68,0.4);
+                        border-radius: 8px;
+                        padding: 10px 14px;
+                        color: #FCA5A5;
+                        font-size: 13px;
+                        font-weight: 600;
+                        text-align: center;
+                        margin-top: 8px;
+                    ">❌ Invalid username or password</div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="
+            text-align: center;
+            margin-top: 20px;
+            color: rgba(255,255,255,0.3);
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        ">© 2026 Bright Star — Non-Air Operations ERP</div>
+        """, unsafe_allow_html=True)
+
+# =========================================================
+# DASHBOARD PAGE
+# =========================================================
+
+def generate_invoice_pdf(data):
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.5*cm,
+        leftMargin=1.5*cm,
+        topMargin=1.5*cm,
+        bottomMargin=1.5*cm
     )
 
-    sidebar.pack(side=LEFT, fill=Y)
+    styles = getSampleStyleSheet()
+    elements = []
 
-    # =====================================================
-    # LOGO
-    # =====================================================
-
-    img = Image.open("logo.png")
-
-    img = img.resize((120, 120))
-
-    logo = ImageTk.PhotoImage(img)
-
-    logo_label = Label(
-        sidebar,
-        image=logo,
-        bg="#020617"
+    # Title
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Normal'],
+        fontSize=18,
+        textColor=colors.HexColor('#1A3A5C'),
+        spaceAfter=6,
+        fontName='Helvetica-Bold'
     )
 
-    logo_label.image = logo
-
-    logo_label.pack(pady=20)
-
-    # =====================================================
-    # TITLE
-    # =====================================================
-
-    Label(
-        sidebar,
-        text="Non-Air\nOperations ERP",
-        font=("Segoe UI", 18, "bold"),
-        bg="#020617",
-        fg="#00BFFF"
-    ).pack(pady=10)
-
-    # =====================================================
-    # USER
-    # =====================================================
-
-    Label(
-        sidebar,
-        text=f"Welcome\n{current_user}",
-        font=("Segoe UI", 11, "bold"),
-        bg="#020617",
-        fg="#00FF99"
-    ).pack(pady=10)
-
-    # =====================================================
-    # CONTENT
-    # =====================================================
-
-    content_frame = Frame(
-        root,
-        bg="#020617"
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor('#6B7280'),
+        spaceAfter=16,
+        fontName='Helvetica'
     )
 
-    content_frame.pack(fill=BOTH, expand=True)
-
-    # =====================================================
-    # PAGES
-    # =====================================================
-
-    dashboard_page = Frame(content_frame, bg="#020617")
-
-    invoices_page = Frame(content_frame, bg="#020617")
-
-    reports_page = Frame(content_frame, bg="#020617")
-
-    vendors_page = Frame(content_frame, bg="#020617")
-
-    support_page = Frame(content_frame, bg="#020617")
-
-    admin_page = Frame(content_frame, bg="#020617")
-
-    # =====================================================
-    # HIDE PAGES
-    # =====================================================
-
-    def hide_frames():
-
-        dashboard_page.pack_forget()
-
-        invoices_page.pack_forget()
-
-        reports_page.pack_forget()
-
-        vendors_page.pack_forget()
-
-        support_page.pack_forget()
-
-        admin_page.pack_forget()
-
-    # =====================================================
-    # SHOW PAGES
-    # =====================================================
-
-    def show_dashboard():
-
-        hide_frames()
-
-        dashboard_page.pack(fill=BOTH, expand=True)
-
-    def show_invoices():
-
-        hide_frames()
-
-        invoices_page.pack(fill=BOTH, expand=True)
-
-    def show_reports():
-
-        hide_frames()
-
-        reports_page.pack(fill=BOTH, expand=True)
-
-        load_reports()
-
-    def show_vendors():
-
-        hide_frames()
-
-        vendors_page.pack(fill=BOTH, expand=True)
-
-    def show_support():
-
-        hide_frames()
-
-        support_page.pack(fill=BOTH, expand=True)
-
-    def show_admin():
-
-        hide_frames()
-
-        admin_page.pack(fill=BOTH, expand=True)
-
-        load_users_table()
-
-    # =====================================================
-    # CHANGE PASSWORD
-    # =====================================================
-
-    def change_password_window():
-
-        window = Toplevel(root)
-
-        window.title("Change Password")
-
-        window.geometry("400x300")
-
-        window.configure(bg="#1e293b")
-
-        Label(
-            window,
-            text="New Password",
-            font=("Segoe UI", 12, "bold"),
-            bg="#1e293b",
-            fg="white"
-        ).pack(pady=20)
-
-        new_pass_entry = Entry(
-            window,
-            show="*",
-            width=30,
-            font=("Segoe UI", 11)
-        )
-
-        new_pass_entry.pack(pady=10)
-
-        def save_password():
-
-            new_password = new_pass_entry.get()
-
-            cursor.execute(
-
-                "UPDATE users SET password=? WHERE username=?",
-
-                (new_password, current_user)
-
-            )
-
-            conn.commit()
-
-            messagebox.showinfo(
-                "DONE",
-                "Password Changed Successfully ✅"
-            )
-
-            window.destroy()
-
-        Button(
-            window,
-            text="SAVE PASSWORD",
-            command=save_password,
-            bg="#10B981",
-            fg="white",
-            font=("Segoe UI", 10, "bold"),
-            relief="flat"
-        ).pack(pady=20)
-
-    # =====================================================
-    # SIDEBAR BUTTON
-    # =====================================================
-
-    def sidebar_button(text, command):
-
-        btn = Button(
-            sidebar,
-            text=text,
-            command=command,
-            font=("Segoe UI", 10, "bold"),
-            bg="#1e293b",
-            fg="white",
-            activebackground="#0ea5e9",
-            activeforeground="white",
-            width=20,
-            height=2,
-            relief="flat",
-            cursor="hand2"
-        )
-
-        btn.pack(pady=8)
-
-        btn.bind(
-            "<Enter>",
-            lambda e: btn.config(bg="#334155")
-        )
-
-        btn.bind(
-            "<Leave>",
-            lambda e: btn.config(bg="#1e293b")
-        )
-
-    sidebar_button("Dashboard", show_dashboard)
-
-    sidebar_button("Invoices", show_invoices)
-
-    sidebar_button("Reports", show_reports)
-
-    sidebar_button("Vendors", show_vendors)
-
-    sidebar_button("Support", show_support)
-
-    sidebar_button("Change Password", change_password_window)
-
-    if current_user == "Bassma":
-
-        sidebar_button("Admin Panel", show_admin)
-
-    # =====================================================
-    # DASHBOARD
-    # =====================================================
-
-    dashboard_header = Frame(
-        dashboard_page,
-        bg="#0f172a",
-        highlightbackground="#334155",
-        highlightthickness=1
-    )
-
-    dashboard_header.pack(fill=X, padx=0, pady=0)
-
-    Label(
-        dashboard_header,
-        text="Operations Dashboard",
-        font=("Segoe UI", 22, "bold"),
-        bg="#0f172a",
-        fg="white"
-    ).pack(side=LEFT, padx=30, pady=18)
-
-    Label(
-        dashboard_header,
-        text="Brightstar  •  Non-Air Operations",
-        font=("Segoe UI", 10),
-        bg="#0f172a",
-        fg="#64748B"
-    ).pack(side=RIGHT, padx=30)
-
-    Label(
-        dashboard_page,
-        text="KEY PERFORMANCE INDICATORS",
-        font=("Segoe UI", 9, "bold"),
-        bg="#020617",
-        fg="#64748B"
-    ).pack(anchor=W, padx=30, pady=(25, 8))
-
-    dashboard_cards = Frame(
-        dashboard_page,
-        bg="#020617"
-    )
-
-    dashboard_cards.pack(padx=30, fill=X)
-
-    def create_card(parent, title, color, subtitle=""):
-
-        card = Frame(
-            parent,
-            bg="#111827",
-            width=250,
-            height=130,
-            highlightbackground="#1e293b",
-            highlightthickness=1
-        )
-
-        card.pack(side=LEFT, padx=(0, 16))
-
-        card.pack_propagate(False)
-
-        accent = Frame(
-            card,
-            bg=color,
-            height=3
-        )
-
-        accent.pack(side=TOP, fill=X)
-
-        inner = Frame(card, bg="#111827")
-
-        inner.pack(fill=BOTH, expand=True, padx=18, pady=12)
-
-        number = Label(
-            inner,
-            text="0",
-            font=("Segoe UI", 24, "bold"),
-            bg="#111827",
-            fg=color,
-            anchor=W
-        )
-
-        number.pack(fill=X, anchor=W)
-
-        Label(
-            inner,
-            text=title.upper(),
-            font=("Segoe UI", 9, "bold"),
-            bg="#111827",
-            fg="#94A3B8",
-            anchor=W
-        ).pack(fill=X, anchor=W, pady=(8, 0))
-
-        if subtitle:
-
-            Label(
-                inner,
-                text=subtitle,
-                font=("Segoe UI", 8),
-                bg="#111827",
-                fg="#475569",
-                anchor=W
-            ).pack(fill=X, anchor=W)
-
-        return number
-
-    total_sales_label = create_card(
-        dashboard_cards,
-        "Total Sales",
-        "#22C55E",
-        "Sum of all invoice totals"
-    )
-
-    total_revenue_label = create_card(
-        dashboard_cards,
-        "Total Revenue",
-        "#3B82F6",
-        "Sum paid to suppliers"
-    )
-
-    invoice_count_label = create_card(
-        dashboard_cards,
-        "Invoices Count",
-        "#F59E0B",
-        "Total invoices generated"
-    )
-
-    # =====================================================
-    # VENDOR ANALYSIS
-    # =====================================================
-
-    Label(
-        dashboard_page,
-        text="VENDOR ANALYSIS",
-        font=("Segoe UI", 9, "bold"),
-        bg="#020617",
-        fg="#64748B"
-    ).pack(anchor=W, padx=30, pady=(35, 8))
-
-    vendor_analysis_card = Frame(
-        dashboard_page,
-        bg="#111827",
-        highlightbackground="#1e293b",
-        highlightthickness=1
-    )
-
-    vendor_analysis_card.pack(padx=30, fill=X)
-
-    vendor_analysis_frame = Frame(
-        vendor_analysis_card,
-        bg="#111827"
-    )
-
-    vendor_analysis_frame.pack(fill=X, padx=20, pady=18)
-
-    Label(
-        vendor_analysis_frame,
-        text="Select Vendor",
-        font=("Segoe UI", 9, "bold"),
-        bg="#111827",
-        fg="#94A3B8"
-    ).pack(anchor=W)
-
-    vendor_select_combo = ttk.Combobox(
-        vendor_analysis_frame,
-        values=vendors,
-        width=45,
-        font=("Segoe UI", 10)
-    )
-
-    vendor_select_combo.pack(anchor=W, pady=(6, 0))
-
-    searchable_combobox(
-        vendor_select_combo,
-        vendors
-    )
-
-    vendor_cards_frame = Frame(
-        dashboard_page,
-        bg="#020617"
-    )
-
-    vendor_cards_frame.pack(padx=30, pady=(16, 10), fill=X)
-
-    vendor_purchased_label = create_card(
-        vendor_cards_frame,
-        "Paid To Supplier",
-        "#3B82F6"
-    )
-
-    vendor_profit_label = create_card(
-        vendor_cards_frame,
-        "Profit (Handling + VAT)",
-        "#22C55E"
-    )
-
-    vendor_invoice_count_label = create_card(
-        vendor_cards_frame,
-        "Invoices With Vendor",
-        "#F59E0B"
-    )
-
-    def update_vendor_analysis(event=None):
-
-        selected_vendor = vendor_select_combo.get()
-
-        if selected_vendor == "":
-
-            vendor_purchased_label.config(text="0")
-
-            vendor_profit_label.config(text="0")
-
-            vendor_invoice_count_label.config(text="0")
-
-            return
-
-        cursor.execute("""
-
-        SELECT
-
-        COUNT(*),
-        IFNULL(SUM(paid_to_supplier),0),
-        IFNULL(SUM(total_amount),0)
-
-        FROM invoices
-
-        WHERE supplier = ?
-
-        """, (selected_vendor,))
-
-        count, purchased, total = cursor.fetchone()
-
-        profit = total - purchased
-
-        vendor_purchased_label.config(text=f"{purchased:,.0f}")
-
-        vendor_profit_label.config(text=f"{profit:,.0f}")
-
-        vendor_invoice_count_label.config(text=f"{count}")
-
-    vendor_select_combo.bind(
-        "<<ComboboxSelected>>",
-        update_vendor_analysis
-    )
-
-    # =====================================================
-    # INVOICE PAGE
-    # =====================================================
-
-    Label(
-        invoices_page,
-        text="Invoice Registration",
-        font=("Segoe UI", 24, "bold"),
-        bg="#020617",
-        fg="white"
-    ).pack(pady=10)
-
-    card = Frame(
-        invoices_page,
-        bg="#1e293b",
-        padx=40,
-        pady=20,
-        highlightbackground="#00BFFF",
-        highlightthickness=1
-    )
-
-    card.pack(
-        padx=20,
-        pady=10,
-        fill=X
-    )
-
-    Label(
-        card,
-        text="Vendor Invoice Details",
-        font=("Segoe UI", 16, "bold"),
-        bg="#1e293b",
-        fg="#00BFFF"
-    ).grid(
-        row=0,
-        column=0,
-        columnspan=4,
-        pady=20
-    )
-
-    # =====================================================
-    # STYLE
-    # =====================================================
-
-    style = ttk.Style()
-
-    style.theme_use("clam")
-
-    style.configure(
-        "TCombobox",
-        fieldbackground="#334155",
-        background="#334155",
-        foreground="white"
-    )
-
-    # =====================================================
-    # HELPERS
-    # =====================================================
-
-    def label_widget(text, row, column):
-
-        lbl = Label(
-            card,
-            text=text,
-            font=("Segoe UI", 10, "bold"),
-            bg="#1e293b",
-            fg="white"
-        )
-
-        lbl.grid(
-            row=row,
-            column=column,
-            padx=10,
-            pady=6,
-            sticky=W
-        )
-
-        lbl.bind(
-            "<Enter>",
-            lambda e: lbl.config(fg="#7DD3FC")
-        )
-
-        lbl.bind(
-            "<Leave>",
-            lambda e: lbl.config(fg="white")
-        )
-
-    def entry_widget(row, column):
-
-        entry = Entry(
-            card,
-            width=40,
-            font=("Segoe UI", 10),
-            bg="#334155",
-            fg="white",
-            relief="flat",
-            insertbackground="white"
-        )
-
-        entry.grid(
-            row=row,
-            column=column,
-            padx=10,
-            pady=6
-        )
-
-        return entry
-
-    # =====================================================
-    # FORM
-    # =====================================================
-
-    label_widget("Date", 1, 0)
-
-    date_entry = DateEntry(
-        card,
-        width=20,
-        font=("Segoe UI", 10),
-        background="#00BFFF",
-        date_pattern="dd/mm/yyyy"
-    )
-
-    date_entry.grid(row=1, column=1, sticky=W)
-
-    label_widget("Invoice No", 1, 2)
-
-    invoice_entry = entry_widget(1, 3)
-
-    label_widget("Owner", 2, 0)
-
-    owner_combo = ttk.Combobox(
-        card,
-        values=issuers,
-        width=37,
-        font=("Segoe UI", 10)
-    )
-
-    owner_combo.grid(row=2, column=1)
-
-    searchable_combobox(
-        owner_combo,
-        issuers
-    )
-
-    label_widget("Accounts", 2, 2)
-
-    accounts_combo = ttk.Combobox(
-        card,
-        values=accounts,
-        width=37,
-        font=("Segoe UI", 10)
-    )
-
-    accounts_combo.grid(row=2, column=3)
-
-    searchable_combobox(
-        accounts_combo,
-        accounts
-    )
-
-    label_widget("Date of Service", 3, 0)
-
-    service_date_entry = DateEntry(
-        card,
-        width=20,
-        font=("Segoe UI", 10),
-        background="#00BFFF",
-        date_pattern="dd/mm/yyyy"
-    )
-
-    service_date_entry.grid(row=3, column=1, sticky=W)
-
-    label_widget("Subject", 3, 2)
-
-    subject_entry = entry_widget(3, 3)
-
-    label_widget("Type of Service", 4, 0)
-
-    service_type_values = [
-        "Hotel",
-        "Flight",
-        "Transfer",
-        "Visa",
-        "Insurance",
-        "Tour",
-        "Restaurant",
-        "Cruise",
-        "Train",
-        "Car Rental",
-        "Guide",
-        "Entrance Fees",
-        "Meet & Assist",
-        "Conference / MICE",
-        "Other"
+    elements.append(Paragraph("Non-Air Operations ERP", title_style))
+    elements.append(Paragraph("Bright Star • Vendor Invoice", subtitle_style))
+    elements.append(Spacer(1, 0.3*cm))
+
+    # Invoice details table
+    table_data = [
+        ["FIELD", "VALUE"],
+        ["Invoice No", data.get("invoice_no", "")],
+        ["Date", data.get("date", "")],
+        ["Owner", data.get("owner", "")],
+        ["Accounts", data.get("accounts", "")],
+        ["Date of Service", data.get("service_date", "")],
+        ["Subject", data.get("subject", "")],
+        ["Type of Service", data.get("service_type", "")],
+        ["Vendor", data.get("supplier", "")],
+        ["City", data.get("supplier_city", "")],
+        ["No. of PAX", str(data.get("no_of_pax", ""))],
+        ["Supplier Invoice No", data.get("supplier_invoice_no", "")],
+        ["PO", data.get("po_number", "")],
+        ["Currency", data.get("currency", "EGP")],
     ]
 
-    service_type_combo = ttk.Combobox(
-        card,
-        values=service_type_values,
-        width=37,
-        font=("Segoe UI", 10)
+    table = Table(table_data, colWidths=[6*cm, 11*cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A3A5C')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F8FAFC'), colors.white]),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#374151')),
+        ('TEXTCOLOR', (1, 1), (1, -1), colors.HexColor('#1A1A2E')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E4EA')),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 20),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(table)
+    elements.append(Spacer(1, 0.5*cm))
+
+    # Financial summary table
+    fin_data = [
+        ["FINANCIAL SUMMARY", ""],
+        ["Paid To Supplier", f"{data.get('paid_to_supplier', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["Handling Fees", f"{data.get('handling_fees', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["VAT (14%)", f"{data.get('vat', 0):,.2f} {data.get('currency', 'EGP')}"],
+        ["TOTAL AMOUNT", f"{data.get('total_amount', 0):,.2f} {data.get('currency', 'EGP')}"],
+    ]
+
+    fin_table = Table(fin_data, colWidths=[6*cm, 11*cm])
+    fin_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1A3A5C')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('SPAN', (0, 0), (1, 0)),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#EFF6FF')),
+        ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 4), (-1, 4), 11),
+        ('TEXTCOLOR', (0, 4), (-1, 4), colors.HexColor('#1A3A5C')),
+        ('FONTNAME', (0, 1), (0, 3), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 3), 9),
+        ('ROWBACKGROUNDS', (0, 1), (-1, 3), [colors.HexColor('#F8FAFC'), colors.white]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E4EA')),
+        ('ROWHEIGHT', (0, 0), (-1, -1), 22),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    elements.append(fin_table)
+    elements.append(Spacer(1, 0.5*cm))
+
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.HexColor('#9CA3AF'),
+        fontName='Helvetica'
     )
+    elements.append(Paragraph(
+        f"Generated by Non-Air Operations ERP  •  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        footer_style
+    ))
 
-    service_type_combo.grid(row=4, column=1)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
-    searchable_combobox(
-        service_type_combo,
-        service_type_values
-    )
+def show_dashboard():
 
-    label_widget("Vendor", 4, 2)
+    st.markdown("# Operations Dashboard")
 
-    vendor_combo = ttk.Combobox(
-        card,
-        values=vendors,
-        width=37,
-        font=("Segoe UI", 10)
-    )
+    cur = get_cursor()
+    cur.execute("""
+    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
+    FROM invoices
+    """)
+    count, total_sales, total_revenue = cur.fetchone()
 
-    vendor_combo.grid(row=4, column=3)
+    st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
 
-    searchable_combobox(
-        vendor_combo,
-        vendors
-    )
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top:3px solid #22C55E;">
+            <p class="metric-number" style="color:#1A7A4A;">{total_sales:,.0f}</p>
+            <p class="metric-label">Total Sales</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top:3px solid #3B82F6;">
+            <p class="metric-number" style="color:#1A3A5C;">{total_revenue:,.0f}</p>
+            <p class="metric-label">Total Revenue (Paid to Supplier)</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top:3px solid #F59E0B;">
+            <p class="metric-number" style="color:#B45309;">{count}</p>
+            <p class="metric-label">Invoices Count</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    label_widget("City", 5, 0)
+    # Treasury quick view
+    cur2 = get_cursor()
+    cur2.execute("""
+    SELECT a.name, a.type, a.currency, a.opening_balance,
+        COALESCE((
+            SELECT SUM(CASE
+                WHEN type IN ('Deposit','Receipt','Transfer_In') THEN amount
+                WHEN type IN ('Withdrawal','Payment','Transfer_Out') THEN -amount
+                ELSE 0 END)
+            FROM treasury_transactions t WHERE t.account_id = a.id
+        ), 0) as movements
+    FROM treasury_accounts a ORDER BY a.type, a.name
+    """)
+    treasury_accs = cur2.fetchall()
 
-    city_combo = ttk.Combobox(
-        card,
-        values=EGYPT_GOVERNORATES,
-        width=37,
-        font=("Segoe UI", 10)
-    )
+    if treasury_accs:
+        banks_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Bank"]
+        cash_data  = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Cash"]
 
-    city_combo.grid(row=5, column=1, sticky=W)
+        if banks_data:
+            st.markdown('<p class="section-label">🏦 Bank Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(banks_data), 4))
+            for i, (name, currency, balance) in enumerate(banks_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    searchable_combobox(
-        city_combo,
-        EGYPT_GOVERNORATES
-    )
+        if cash_data:
+            st.markdown('<p class="section-label">💰 Cash Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(cash_data), 4))
+            for i, (name, currency, balance) in enumerate(cash_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    label_widget("No. of PAX", 5, 2)
+    # Vendor Analysis
+    st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+    selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
+    if selected_vendor:
+        cur3 = get_cursor()
+        cur3.execute("""
+        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+        FROM invoices WHERE supplier = %s
+        """, (selected_vendor,))
+        v_count, v_purchased, v_total = cur3.fetchone()
+        v_profit = v_total - v_purchased
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{v_purchased:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p></div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{v_profit:,.0f}</p>
+                <p class="metric-label">Profit</p></div>""", unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{v_count}</p>
+                <p class="metric-label">Invoices With Vendor</p></div>""", unsafe_allow_html=True)
 
-    pax_entry = entry_widget(5, 3)
+    # Customer Analysis
+    st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
+    accounts = load_accounts()
+    selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
+    if selected_account:
+        cur4 = get_cursor()
+        cur4.execute("""
+        SELECT COUNT(*), COALESCE(SUM(total_amount),0),
+               COALESCE(SUM(paid_to_supplier),0),
+               COALESCE(SUM(handling_fees),0),
+               COALESCE(SUM(vat),0)
+        FROM invoices WHERE accounts = %s
+        """, (selected_account,))
+        c_count, c_total, c_paid, c_handling, c_vat = cur4.fetchone()
+        c_profit = c_handling + c_vat
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_count}</p>
+                <p class="metric-label">Invoices Count</p></div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{c_total:,.0f}</p>
+                <p class="metric-label">Total Amount</p></div>""", unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_paid:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p></div>""", unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""<div class="metric-card" style="border-top:3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{c_profit:,.0f}</p>
+                <p class="metric-label">Profit</p></div>""", unsafe_allow_html=True)
 
-    label_widget("Supplier Invoice No", 6, 0)
+def show_treasury():
 
-    supplier_invoice_entry = entry_widget(6, 1)
+    st.markdown("""
+    <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+        <span style="color:white; font-size:20px; font-weight:700;">🏦 Treasury Management</span>
+        <span style="color:#93C5FD; font-size:13px; margin-left:16px;">Banks & Cash Boxes</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    label_widget("PO", 6, 2)
+    cur = get_cursor()
+    tab1, tab2, tab3 = st.tabs(["📊 Overview", "💳 New Transaction", "⚙️ Manage Accounts"])
 
-    po_entry = entry_widget(6, 3)
+    # ── TAB 1: OVERVIEW ────────────────────────────────────
+    with tab1:
 
-    label_widget("Paid To Supplier", 7, 0)
+        cur.execute("SELECT id, name, type, currency, opening_balance FROM treasury_accounts ORDER BY type, name")
+        accounts = cur.fetchall()
 
-    paid_to_supplier_entry = entry_widget(7, 1)
-
-    label_widget("Handling Fees", 7, 2)
-
-    handling_fees_entry = entry_widget(7, 3)
-
-    label_widget("VAT (14%)", 8, 0)
-
-    vat_label = Label(
-        card,
-        text="0.00",
-        font=("Segoe UI", 10, "bold"),
-        bg="#1e293b",
-        fg="#F59E0B"
-    )
-
-    vat_label.grid(row=8, column=1, sticky=W)
-
-    VAT_RATE = 0.14
-
-    label_widget("Currency", 8, 2)
-
-    currency_combo = ttk.Combobox(
-        card,
-        values=["EGP", "USD"],
-        width=10,
-        font=("Segoe UI", 10),
-        state="readonly"
-    )
-
-    currency_combo.grid(row=8, column=3, sticky=W)
-
-    currency_combo.set("EGP")
-
-    total_result = Label(
-        card,
-        text="Total Amount : 0",
-        font=("Segoe UI", 12, "bold"),
-        bg="#1e293b",
-        fg="#00FF99"
-    )
-
-    total_result.grid(row=9, column=1, columnspan=3, pady=15, sticky=W)
-
-    # =====================================================
-    # AUTO VAT CALCULATION
-    # =====================================================
-
-    def update_vat(event=None):
-
-        try:
-
-            handling_fees = float(handling_fees_entry.get() or 0)
-
-            vat = handling_fees * VAT_RATE
-
-        except ValueError:
-
-            vat = 0
-
-        vat_label.config(text=f"{vat:.2f}")
-
-    handling_fees_entry.bind("<KeyRelease>", update_vat)
-
-    # =====================================================
-    # LOAD VENDOR
-    # =====================================================
-
-    def load_vendor(event):
-
-        selected = vendor_combo.get()
-
-        vendor_data = vendors_df[
-            vendors_df["Alias"] == selected
-        ]
-
-        if not vendor_data.empty:
-
-            city_combo.set(
-                vendor_data.iloc[0]["City"]
-            )
-
+        if not accounts:
+            st.info("No accounts yet. Go to 'Manage Accounts' to add banks and cash boxes.")
         else:
+            banks = [a for a in accounts if a[2] == "Bank"]
+            cash_boxes = [a for a in accounts if a[2] == "Cash"]
 
-            city_combo.set("")
+            def get_balance(account_id, opening_balance):
+                cur.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN account_id = %s AND type IN ('Deposit','Receipt','Transfer_In') THEN amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN account_id = %s AND type IN ('Withdrawal','Payment','Transfer_Out') THEN amount ELSE 0 END), 0)
+                FROM treasury_transactions
+                WHERE account_id = %s OR to_account_id = %s
+                """, (account_id, account_id, account_id, account_id))
+                movements = cur.fetchone()[0] or 0
+                return opening_balance + movements
 
-    vendor_combo.bind(
-        "<<ComboboxSelected>>",
-        load_vendor
-    )
+            # Banks
+            if banks:
+                st.markdown('<p class="section-label">🏦 Banks</p>', unsafe_allow_html=True)
+                cols = st.columns(min(len(banks), 3))
+                for i, bank in enumerate(banks):
+                    balance = get_balance(bank[0], bank[4])
+                    color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                            <p style="font-size:13px;color:#6B7280;font-weight:700;margin:0;">{bank[1]}</p>
+                            <p style="font-size:24px;font-weight:800;color:{color};margin:8px 0 0 0;">{balance:,.2f}</p>
+                            <p style="font-size:11px;color:#94A3B8;margin:4px 0 0 0;">{bank[3]}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-    # =====================================================
-    # CALCULATE
-    # =====================================================
+            # Cash Boxes
+            if cash_boxes:
+                st.markdown('<p class="section-label">💰 Cash Boxes</p>', unsafe_allow_html=True)
+                cols = st.columns(min(len(cash_boxes), 3))
+                for i, cash in enumerate(cash_boxes):
+                    balance = get_balance(cash[0], cash[4])
+                    color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                            <p style="font-size:13px;color:#6B7280;font-weight:700;margin:0;">{cash[1]}</p>
+                            <p style="font-size:24px;font-weight:800;color:{color};margin:8px 0 0 0;">{balance:,.2f}</p>
+                            <p style="font-size:11px;color:#94A3B8;margin:4px 0 0 0;">{cash[3]}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-    def calculate():
-
-        try:
-
-            paid_to_supplier = float(paid_to_supplier_entry.get() or 0)
-
-            handling_fees = float(handling_fees_entry.get() or 0)
-
-            vat = handling_fees * VAT_RATE
-
-            vat_label.config(text=f"{vat:.2f}")
-
-            total = paid_to_supplier + handling_fees + vat
-
-            total_result.config(
-                text=f"Total Amount : {total:.2f} {currency_combo.get()}"
-            )
-
-        except:
-
-            messagebox.showerror(
-                "Error",
-                "Invalid Amount"
-            )
-
-    # =====================================================
-    # CLEAR
-    # =====================================================
-
-    def clear_form():
-
-        invoice_entry.delete(0, END)
-
-        owner_combo.set("")
-
-        vendor_combo.set("")
-
-        accounts_combo.set("")
-
-        subject_entry.delete(0, END)
-
-        service_type_combo.set("")
-
-        pax_entry.delete(0, END)
-
-        supplier_invoice_entry.delete(0, END)
-
-        po_entry.delete(0, END)
-
-        paid_to_supplier_entry.delete(0, END)
-
-        handling_fees_entry.delete(0, END)
-
-        vat_label.config(text="0.00")
-
-        city_combo.set("")
-
-        total_result.config(text="Total Amount : 0")
-
-        currency_combo.set("EGP")
-
-    # =====================================================
-    # DASHBOARD UPDATE
-    # =====================================================
-
-    def update_dashboard():
-
-        cursor.execute("""
-
-        SELECT
-
-        COUNT(*),
-        IFNULL(SUM(total_amount),0),
-        IFNULL(SUM(paid_to_supplier),0)
-
-        FROM invoices
-
-        """)
-
-        count, sales, revenue = cursor.fetchone()
-
-        invoice_count_label.config(text=f"{count}")
-
-        total_sales_label.config(text=f"{sales:,.0f}")
-
-        total_revenue_label.config(text=f"{revenue:,.0f}")
-
-    # =====================================================
-    # LOAD REPORTS
-    # =====================================================
-
-    def load_reports(search_text=""):
-
-        for row in invoice_table.get_children():
-
-            invoice_table.delete(row)
-
-        if search_text == "":
-
-            cursor.execute("""
-
-            SELECT
-
-            id,
-            date,
-            invoice_no,
-            owner,
-            accounts,
-            service_date,
-            subject,
-            service_type,
-            supplier,
-            supplier_city,
-            no_of_pax,
-            supplier_invoice_no,
-            po_number,
-            total_amount,
-            paid_to_supplier,
-            handling_fees,
-            vat,
-            currency,
-            payment_status
-
-            FROM invoices
-
-            ORDER BY id DESC
-
+            # Recent transactions
+            st.markdown('<p class="section-label">Recent Transactions</p>', unsafe_allow_html=True)
+            cur.execute("""
+            SELECT t.date, t.type, a.name, b.name, t.amount, t.currency, t.description, t.invoice_no
+            FROM treasury_transactions t
+            LEFT JOIN treasury_accounts a ON t.account_id = a.id
+            LEFT JOIN treasury_accounts b ON t.to_account_id = b.id
+            ORDER BY t.id DESC LIMIT 20
             """)
-
-        else:
-
-            cursor.execute("""
-
-            SELECT
-
-            id,
-            date,
-            invoice_no,
-            owner,
-            accounts,
-            service_date,
-            subject,
-            service_type,
-            supplier,
-            supplier_city,
-            no_of_pax,
-            supplier_invoice_no,
-            po_number,
-            total_amount,
-            paid_to_supplier,
-            handling_fees,
-            vat,
-            currency,
-            payment_status
-
-            FROM invoices
-
-            WHERE supplier LIKE ?
-            OR accounts LIKE ?
-            OR invoice_no LIKE ?
-
-            ORDER BY id DESC
-
-            """, (
-
-                f"%{search_text}%",
-                f"%{search_text}%",
-                f"%{search_text}%"
-
-            ))
-
-        rows = cursor.fetchall()
-
-        for row in rows:
-
-            if row[18] == "Paid":
-
-                invoice_table.insert(
-                    "",
-                    END,
-                    values=row,
-                    tags=("paid",)
-                )
-
+            rows = cur.fetchall()
+            if rows:
+                df = pd.DataFrame(rows, columns=["Date", "Type", "Account", "To Account", "Amount", "Currency", "Description", "Invoice No"])
+                st.dataframe(df, use_container_width=True, height=350)
             else:
+                st.info("No transactions yet.")
 
-                invoice_table.insert(
-                    "",
-                    END,
-                    values=row,
-                    tags=("pending",)
+    # ── TAB 2: NEW TRANSACTION ─────────────────────────────
+    with tab2:
+
+        cur.execute("SELECT id, name, type, currency FROM treasury_accounts ORDER BY type, name")
+        all_accounts = cur.fetchall()
+
+        if not all_accounts:
+            st.warning("Please add accounts first from 'Manage Accounts' tab.")
+        else:
+            account_names = {f"{a[1]} ({a[2]})": a[0] for a in all_accounts}
+
+            st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:16px;">Transaction Details</p>', unsafe_allow_html=True)
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                t_date = st.date_input("Date", value=date.today(), key="t_date")
+            with c2:
+                t_type = st.selectbox("Transaction Type", [
+                    "Deposit", "Withdrawal", "Payment",
+                    "Receipt", "Transfer"
+                ], key="t_type")
+            with c3:
+                t_currency = st.selectbox("Currency", ["EGP", "USD"], key="t_currency")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                from_account = st.selectbox(
+                    "From Account" if t_type == "Transfer" else "Account",
+                    list(account_names.keys()),
+                    key="t_from"
+                )
+            with c2:
+                if t_type == "Transfer":
+                    to_account = st.selectbox("To Account", list(account_names.keys()), key="t_to")
+                else:
+                    to_account = None
+
+            c1, c2 = st.columns(2)
+            with c1:
+                t_amount = st.number_input("Amount", min_value=0.0, step=0.01, key="t_amount")
+            with c2:
+                t_invoice = st.text_input("Invoice No (if linked)", key="t_invoice")
+
+            t_desc = st.text_input("Description", key="t_desc")
+
+            if st.button("✅ Save Transaction", use_container_width=True, type="primary"):
+                if t_amount <= 0:
+                    st.error("Amount must be greater than 0")
+                else:
+                    from_id = account_names[from_account]
+                    to_id = account_names[to_account] if to_account else None
+
+                    # Determine transaction type for from/to
+                    db_type = t_type
+                    if t_type == "Transfer":
+                        # Insert outgoing
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, to_account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), "Transfer_Out", from_id, to_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+                        # Insert incoming
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, to_account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), "Transfer_In", to_id, from_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+                    else:
+                        cur.execute("""
+                        INSERT INTO treasury_transactions
+                        (date, type, account_id, amount, currency, description, invoice_no, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (str(t_date), db_type, from_id, t_amount, t_currency, t_desc, t_invoice, st.session_state.current_user))
+
+                    # If payment linked to invoice, mark as paid
+                    if t_type == "Payment" and t_invoice:
+                        cur.execute("""
+                        UPDATE invoices SET payment_status = 'Paid'
+                        WHERE invoice_no = %s
+                        """, (t_invoice,))
+
+                    st.success("✅ Transaction saved successfully!")
+                    st.rerun()
+
+    # ── TAB 3: MANAGE ACCOUNTS ─────────────────────────────
+    with tab3:
+
+        st.markdown("### Add New Account")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            acc_name = st.text_input("Account Name", placeholder="e.g. CIB Bank")
+        with c2:
+            acc_type = st.selectbox("Type", ["Bank", "Cash"])
+        with c3:
+            acc_currency = st.selectbox("Currency", ["EGP", "USD"], key="acc_cur")
+        with c4:
+            acc_opening = st.number_input("Opening Balance", min_value=0.0, step=0.01)
+
+        if st.button("➕ Add Account", use_container_width=True):
+            if acc_name.strip():
+                try:
+                    cur.execute("""
+                    INSERT INTO treasury_accounts (name, type, currency, opening_balance)
+                    VALUES (%s, %s, %s, %s)
+                    """, (acc_name.strip(), acc_type, acc_currency, acc_opening))
+                    st.success(f"✅ Account '{acc_name}' added!")
+                    st.rerun()
+                except:
+                    st.error("Account name already exists")
+            else:
+                st.warning("Please enter account name")
+
+        st.markdown("### Current Accounts")
+        cur.execute("SELECT id, name, type, currency, opening_balance FROM treasury_accounts ORDER BY type, name")
+        accs = cur.fetchall()
+        if accs:
+            df = pd.DataFrame(accs, columns=["ID", "Name", "Type", "Currency", "Opening Balance"])
+            st.dataframe(df, use_container_width=True)
+
+            del_id = st.selectbox("Select account to delete", [f"{a[0]} - {a[1]}" for a in accs])
+            if st.button("🗑️ Delete Account", type="primary"):
+                del_account_id = int(del_id.split(" - ")[0])
+                cur.execute("DELETE FROM treasury_accounts WHERE id = %s", (del_account_id,))
+                st.success("Account deleted!")
+                st.rerun()
+        else:
+            st.info("No accounts yet.")
+
+    st.markdown("# Operations Dashboard")
+
+    cur = get_cursor()
+    cur.execute("""
+    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
+    FROM invoices
+    """)
+    count, total_sales, total_revenue = cur.fetchone()
+
+    st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #22C55E;">
+            <p class="metric-number" style="color:#1A7A4A;">{total_sales:,.0f}</p>
+            <p class="metric-label">Total Sales</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+            <p class="metric-number" style="color:#1A3A5C;">{total_revenue:,.0f}</p>
+            <p class="metric-label">Total Revenue (Paid to Supplier)</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+            <p class="metric-number" style="color:#B45309;">{count}</p>
+            <p class="metric-label">Invoices Count</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Treasury quick view
+    cur.execute("""
+    SELECT a.name, a.type, a.currency, a.opening_balance,
+        COALESCE((
+            SELECT SUM(CASE
+                WHEN type IN ('Deposit','Receipt','Transfer_In') THEN amount
+                WHEN type IN ('Withdrawal','Payment','Transfer_Out') THEN -amount
+                ELSE 0 END)
+            FROM treasury_transactions t WHERE t.account_id = a.id
+        ), 0) as movements
+    FROM treasury_accounts a ORDER BY a.type, a.name
+    """)
+    treasury_accs = cur.fetchall()
+
+    if treasury_accs:
+        banks_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Bank"]
+        cash_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Cash"]
+
+        if banks_data:
+            st.markdown('<p class="section-label">🏦 Bank Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(banks_data), 4))
+            for i, (name, currency, balance) in enumerate(banks_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        if cash_data:
+            st.markdown('<p class="section-label">💰 Cash Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(cash_data), 4))
+            for i, (name, currency, balance) in enumerate(cash_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
+
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+
+    selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
+
+    if selected_vendor:
+        cur.execute("""
+        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+        FROM invoices WHERE supplier = %s
+        """, (selected_vendor,))
+        v_count, v_purchased, v_total = cur.fetchone()
+        v_profit = v_total - v_purchased
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{v_purchased:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{v_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{v_count}</p>
+                <p class="metric-label">Invoices With Vendor</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── CUSTOMER ANALYSIS ──────────────────────────────────
+    st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
+
+    accounts = load_accounts()
+
+    selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
+
+    if selected_account:
+        cur.execute("""
+        SELECT COUNT(*),
+               COALESCE(SUM(total_amount),0),
+               COALESCE(SUM(paid_to_supplier),0),
+               COALESCE(SUM(handling_fees),0),
+               COALESCE(SUM(vat),0)
+        FROM invoices WHERE accounts = %s
+        """, (selected_account,))
+        c_count, c_total, c_paid, c_handling, c_vat = cur.fetchone()
+        c_profit = c_handling + c_vat
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #1A3A5C;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_count}</p>
+                <p class="metric-label">Invoices Count</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{c_total:,.0f}</p>
+                <p class="metric-label">Total Amount</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_paid:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{c_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+# =========================================================
+# INVOICES PAGE
+# =========================================================
+
+def show_invoices():
+
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+    issuers = load_issuers()
+    accounts = load_accounts()
+
+    st.markdown("""
+    <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+        <span style="color:white; font-size:20px; font-weight:700; letter-spacing:0.5px;">
+            📄 Invoice Registration
+        </span>
+        <span style="color:#93C5FD; font-size:13px; margin-left:16px;">
+            Vendor Invoice Details
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── ROW 1 ──────────────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:12px;">General Information</p>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        inv_date = st.date_input("Date", value=date.today())
+    with c2:
+        invoice_no = st.text_input("Invoice No")
+    with c3:
+        owner = st.selectbox("Owner", [""] + issuers)
+    with c4:
+        accounts_val = st.selectbox("Accounts", [""] + accounts)
+
+    # ── ROW 2 ──────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        service_date = st.date_input("Date of Service", value=date.today())
+    with c2:
+        subject = st.text_input("Subject")
+    with c3:
+        service_type = st.selectbox("Type of Service", [""] + SERVICE_TYPES)
+    with c4:
+        vendor = st.selectbox("Vendor", [""] + vendors)
+
+    # ── ROW 3 ──────────────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Service Details</p>', unsafe_allow_html=True)
+
+    vendor_city = ""
+    if vendor:
+        v_data = vendors_df[vendors_df["Alias"] == vendor]
+        if not v_data.empty:
+            vendor_city = v_data.iloc[0]["City"]
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
+                           index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
+                           if vendor_city in EGYPT_GOVERNORATES else 0)
+    with c2:
+        pax = st.number_input("No. of PAX", min_value=0, step=1)
+    with c3:
+        supplier_inv_no = st.text_input("Supplier Invoice No")
+    with c4:
+        po = st.text_input("PO")
+
+    # ── ROW 4: AMOUNTS ─────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details</p>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01, key="paid")
+    with c2:
+        rate = get_handling_rate(accounts_val) if accounts_val else None
+        if rate:
+            handling_fees = paid_to_supplier * rate
+            st.markdown(f"""
+            <div style="margin-top:4px;">
+                <label style="font-size:14px;color:#374151;font-weight:500;">Handling Fees ({rate*100:.1f}%)</label>
+                <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:18px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
+    with c3:
+        currency = st.selectbox("Currency", ["EGP", "USD"])
+    with c4:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    # ── TOTALS BAR ─────────────────────────────────────────
+    vat = handling_fees * VAT_RATE
+    total = paid_to_supplier + handling_fees + vat
+
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #1A3A5C 0%, #1e4976 100%);
+        border-radius: 8px;
+        padding: 20px 28px;
+        margin: 20px 0;
+        display: flex;
+        gap: 60px;
+        align-items: center;
+    ">
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">VAT (14%)</div>
+            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{vat:,.2f}</div>
+        </div>
+        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">TOTAL AMOUNT</div>
+            <div style="color:#4ADE80; font-size:28px; font-weight:800; font-family:'Segoe UI',Arial,sans-serif;">{total:,.2f} <span style="font-size:16px; color:#86EFAC;">{currency}</span></div>
+        </div>
+        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">PAID TO SUPPLIER</div>
+            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{paid_to_supplier:,.2f}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── GENERATE BUTTON ────────────────────────────────────
+    col_btn, col_empty = st.columns([1, 3])
+    with col_btn:
+        generate = st.button("✅  GENERATE INVOICE", use_container_width=True, type="primary")
+
+    if generate:
+        if not invoice_no or not vendor or not accounts_val:
+            st.error("⚠️ Please fill Invoice No, Vendor, and Accounts")
+        else:
+            cur = get_cursor()
+            cur.execute("""
+            INSERT INTO invoices (
+                date, invoice_no, owner, accounts, service_date,
+                subject, service_type, supplier, supplier_city,
+                no_of_pax, supplier_invoice_no, po_number,
+                total_amount, paid_to_supplier, handling_fees,
+                vat, currency, payment_status, created_by
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                str(inv_date), invoice_no, owner, accounts_val,
+                str(service_date), subject, service_type, vendor,
+                vendor_city or city, pax, supplier_inv_no, po,
+                total, paid_to_supplier, handling_fees, vat,
+                currency, "Pending", st.session_state.current_user
+            ))
+            st.success("✅ Invoice Generated Successfully!")
+            st.balloons()
+
+            invoice_data = {
+                "invoice_no": invoice_no,
+                "date": str(inv_date),
+                "owner": owner,
+                "accounts": accounts_val,
+                "service_date": str(service_date),
+                "subject": subject,
+                "service_type": service_type,
+                "supplier": vendor,
+                "supplier_city": vendor_city or city,
+                "no_of_pax": pax,
+                "supplier_invoice_no": supplier_inv_no,
+                "po_number": po,
+                "total_amount": total,
+                "paid_to_supplier": paid_to_supplier,
+                "handling_fees": handling_fees,
+                "vat": vat,
+                "currency": currency,
+            }
+
+            col_pdf, col_wa, col_empty = st.columns([1, 1, 2])
+
+            with col_pdf:
+                if REPORTLAB_AVAILABLE:
+                    pdf_buffer = generate_invoice_pdf(invoice_data)
+                    st.download_button(
+                        label="📄 Download PDF",
+                        data=pdf_buffer,
+                        file_name=f"Invoice_{invoice_no}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("PDF not available")
+
+            with col_wa:
+                wa_message = (
+                    f"✅ New Invoice Generated\n\n"
+                    f"Invoice No: {invoice_no}\n"
+                    f"Date: {inv_date}\n"
+                    f"Vendor: {vendor}\n"
+                    f"Account: {accounts_val}\n"
+                    f"Total: {total:,.2f} {currency}\n"
+                    f"VAT: {vat:,.2f}\n"
+                    f"Handling: {handling_fees:,.2f}\n\n"
+                    f"Generated by Non-Air Operations ERP"
+                )
+                wa_url = f"https://wa.me/{SUPPORT_WHATSAPP}?text={urllib.parse.quote(wa_message)}"
+                st.markdown(
+                    f'<a href="{wa_url}" target="_blank">'
+                    f'<button style="width:100%;background:#25D366;color:white;border:none;'
+                    f'padding:8px;border-radius:4px;font-weight:600;font-size:14px;cursor:pointer;">'
+                    f'📱 Send WhatsApp</button></a>',
+                    unsafe_allow_html=True
                 )
 
-        invoice_table.tag_configure(
-            "paid",
-            background="#d1fae5"
-        )
+# =========================================================
+# REPORTS PAGE
+# =========================================================
 
-        invoice_table.tag_configure(
-            "pending",
-            background="#fef3c7"
-        )
+def show_reports():
+    st.markdown("# Reports")
 
-    # =====================================================
-    # MARK AS PAID
-    # =====================================================
+    search = st.text_input("🔍 Search by Vendor, Account, or Invoice No")
 
-    def mark_as_paid():
+    cur = get_cursor()
 
-        selected = invoice_table.focus()
-
-        if not selected:
-
-            messagebox.showwarning(
-                "Warning",
-                "Please select invoice"
-            )
-
-            return
-
-        values = invoice_table.item(
-            selected,
-            "values"
-        )
-
-        invoice_id = values[0]
-
-        cursor.execute(
-
-            "UPDATE invoices SET payment_status='Paid' WHERE id=?",
-
-            (invoice_id,)
-
-        )
-
-        conn.commit()
-
-        load_reports()
-
-        messagebox.showinfo(
-            "DONE",
-            "Invoice Marked As Paid ✅"
-        )
-
-    # =====================================================
-    # EXPORT
-    # =====================================================
-
-    def export_reports():
-
-        cursor.execute("""
-
-        SELECT *
-
+    if search:
+        cur.execute("""
+        SELECT id, date, invoice_no, owner, accounts, service_date,
+               subject, service_type, supplier, supplier_city, no_of_pax,
+               supplier_invoice_no, po_number, total_amount, paid_to_supplier,
+               handling_fees, vat, currency, payment_status
         FROM invoices
-
+        WHERE supplier ILIKE %s OR accounts ILIKE %s OR invoice_no ILIKE %s
         ORDER BY id DESC
-
+        """, (f"%{search}%", f"%{search}%", f"%{search}%"))
+    else:
+        cur.execute("""
+        SELECT id, date, invoice_no, owner, accounts, service_date,
+               subject, service_type, supplier, supplier_city, no_of_pax,
+               supplier_invoice_no, po_number, total_amount, paid_to_supplier,
+               handling_fees, vat, currency, payment_status
+        FROM invoices ORDER BY id DESC
         """)
 
-        rows = cursor.fetchall()
+    rows = cur.fetchall()
+    columns = [
+        "ID", "Date", "Invoice No", "Owner", "Accounts", "Date of Service",
+        "Subject", "Type of Service", "Vendor", "City", "PAX",
+        "Supplier Inv No", "PO", "Total Amount", "Paid to Supplier",
+        "Handling Fees", "VAT", "Currency", "Status"
+    ]
 
-        columns = [
+    if rows:
+        df = pd.DataFrame(rows, columns=columns)
+        st.dataframe(df, use_container_width=True, height=500)
 
-            "ID",
-            "Date",
-            "Invoice No",
-            "Owner",
-            "Accounts",
-            "Date Of Service",
-            "Subject",
-            "Type Of Service",
-            "Vendor",
-            "City",
-            "No. of PAX",
-            "Supplier Invoice No",
-            "PO",
-            "Total Amount",
-            "Paid To Supplier",
-            "Handling Fees",
-            "VAT",
-            "Currency",
-            "Payment Status",
-            "Created By"
-
-        ]
-
-        df = pd.DataFrame(
-            rows,
-            columns=columns
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "📥 Export to Excel",
+            csv,
+            "invoices_report.csv",
+            "text/csv"
         )
+    else:
+        st.info("No invoices found")
 
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[
-                ("Excel Files", "*.xlsx")
-            ]
+# =========================================================
+# ADMIN PANEL PAGE
+# =========================================================
+
+def show_admin():
+    st.markdown("# Admin Panel")
+
+    cur = get_cursor()
+
+    st.markdown("### Add New User")
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        new_username = st.text_input("Username")
+    with col2:
+        new_password = st.text_input("Password", type="password")
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("ADD USER", use_container_width=True):
+            if new_username and new_password:
+                try:
+                    cur.execute(
+                        "INSERT INTO users (username, password) VALUES (%s, %s)",
+                        (new_username, new_password)
+                    )
+                    st.success(f"✅ User '{new_username}' added!")
+                except:
+                    st.error("Username already exists")
+            else:
+                st.warning("Please fill both fields")
+
+    st.markdown("### Current Users")
+    cur.execute("SELECT id, username FROM users ORDER BY id")
+    users = cur.fetchall()
+
+    if users:
+        df = pd.DataFrame(users, columns=["ID", "Username"])
+        st.dataframe(df, use_container_width=True)
+
+        del_username = st.selectbox(
+            "Select user to delete",
+            [u[1] for u in users if u[1] != "Bassma"]
         )
+        if st.button("🗑️ DELETE SELECTED USER", type="primary"):
+            cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
+            st.success(f"✅ User '{del_username}' deleted!")
+            st.rerun()
 
-        if file_path:
+# =========================================================
+# MAIN APP
+# =========================================================
 
-            df.to_excel(
-                file_path,
-                index=False
-            )
+try:
+    create_tables()
+except Exception as e:
+    st.error(f"Database connection error: {e}")
+    st.info("Please check your database password in the code")
+    st.stop()
 
-            messagebox.showinfo(
-                "DONE",
-                "Reports Exported Successfully ✅"
-            )
+if not st.session_state.logged_in:
+    show_login()
+else:
+    with st.sidebar:
 
-    # =====================================================
-    # GENERATE
-    # =====================================================
-
-    def generate_invoice():
-
+        # Logo
         try:
-
-            paid_to_supplier = float(paid_to_supplier_entry.get() or 0)
-
-            handling_fees = float(handling_fees_entry.get() or 0)
-
-            vat = handling_fees * VAT_RATE
-
-            total = paid_to_supplier + handling_fees + vat
-
-            pax_value = pax_entry.get()
-
-            pax_value = int(pax_value) if pax_value.strip() != "" else 0
-
-            cursor.execute("""
-
-            INSERT INTO invoices (
-
-                date,
-                invoice_no,
-                owner,
-                accounts,
-                service_date,
-                subject,
-                service_type,
-                supplier,
-                supplier_city,
-                no_of_pax,
-                supplier_invoice_no,
-                po_number,
-                total_amount,
-                paid_to_supplier,
-                handling_fees,
-                vat,
-                currency,
-                payment_status,
-                created_by
-
-            )
-
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-
-            """, (
-
-                date_entry.get(),
-                invoice_entry.get(),
-                owner_combo.get(),
-                accounts_combo.get(),
-                service_date_entry.get(),
-                subject_entry.get(),
-                service_type_combo.get(),
-                vendor_combo.get(),
-                city_combo.get(),
-                pax_value,
-                supplier_invoice_entry.get(),
-                po_entry.get(),
-                total,
-                paid_to_supplier,
-                handling_fees,
-                vat,
-                currency_combo.get(),
-                "Pending",
-                current_user
-
-            ))
-
-            conn.commit()
-
-            update_dashboard()
-
-            load_reports()
-
-            messagebox.showinfo(
-                "DONE",
-                "Invoice Generated Successfully ✅"
-            )
-
-            clear_form()
-
-        except Exception as e:
-
-            messagebox.showerror(
-                "Error",
-                str(e)
-            )
-
-    # =====================================================
-    # BUTTONS
-    # =====================================================
-
-    button_frame = Frame(
-        invoices_page,
-        bg="#020617"
-    )
-
-    button_frame.pack(pady=15)
-
-    calculate_btn = Button(
-        button_frame,
-        text="CALCULATE",
-        command=calculate,
-        font=("Segoe UI", 10, "bold"),
-        bg="#F59E0B",
-        fg="white",
-        width=18,
-        height=2,
-        relief="flat",
-        cursor="hand2"
-    )
-
-    calculate_btn.grid(row=0, column=0, padx=10)
-
-    add_hover_effect(calculate_btn, "#F59E0B", "#FBBF24")
-
-    generate_btn = Button(
-        button_frame,
-        text="GENERATE",
-        command=generate_invoice,
-        font=("Segoe UI", 10, "bold"),
-        bg="#10B981",
-        fg="white",
-        width=18,
-        height=2,
-        relief="flat",
-        cursor="hand2"
-    )
-
-    generate_btn.grid(row=0, column=1, padx=10)
-
-    add_hover_effect(generate_btn, "#10B981", "#34D399")
-
-    clear_btn = Button(
-        button_frame,
-        text="CLEAR",
-        command=clear_form,
-        font=("Segoe UI", 10, "bold"),
-        bg="#EF4444",
-        fg="white",
-        width=18,
-        height=2,
-        relief="flat",
-        cursor="hand2"
-    )
-
-    clear_btn.grid(row=0, column=2, padx=10)
-
-    add_hover_effect(clear_btn, "#EF4444", "#F87171")
-
-    # =====================================================
-    # REPORTS PAGE
-    # =====================================================
-
-    Label(
-        reports_page,
-        text="Reports",
-        font=("Segoe UI", 24, "bold"),
-        bg="#020617",
-        fg="white"
-    ).pack(pady=15)
-
-    search_reports_frame = Frame(
-        reports_page,
-        bg="#020617"
-    )
-
-    search_reports_frame.pack(pady=10)
-
-    report_search_entry = Entry(
-        search_reports_frame,
-        width=50,
-        font=("Segoe UI", 10)
-    )
-
-    report_search_entry.pack(side=LEFT, padx=10)
-
-    Button(
-        search_reports_frame,
-        text="SEARCH",
-        command=lambda: load_reports(
-            report_search_entry.get()
-        ),
-        font=("Segoe UI", 10, "bold"),
-        bg="#00BFFF",
-        fg="white",
-        relief="flat"
-    ).pack(side=LEFT)
-
-    Button(
-        search_reports_frame,
-        text="MARK AS PAID",
-        command=mark_as_paid,
-        font=("Segoe UI", 10, "bold"),
-        bg="#22c55e",
-        fg="white",
-        relief="flat"
-    ).pack(side=LEFT, padx=10)
-
-    Button(
-        search_reports_frame,
-        text="EXPORT EXCEL",
-        command=export_reports,
-        font=("Segoe UI", 10, "bold"),
-        bg="#10B981",
-        fg="white",
-        relief="flat"
-    ).pack(side=LEFT, padx=10)
-
-    # =====================================================
-    # REPORT TABLE
-    # =====================================================
-
-    reports_table_frame = Frame(
-        reports_page,
-        bg="#020617"
-    )
-
-    reports_table_frame.pack(
-        fill=BOTH,
-        expand=True,
-        padx=20,
-        pady=10
-    )
-
-    columns = (
-
-        "ID",
-        "Date",
-        "Invoice No",
-        "Owner",
-        "Accounts",
-        "Date Of Service",
-        "Subject",
-        "Type Of Service",
-        "Vendor",
-        "City",
-        "No. of PAX",
-        "Supplier Invoice No",
-        "PO",
-        "Total Amount",
-        "Paid To Supplier",
-        "Handling Fees",
-        "VAT",
-        "Currency",
-        "Status"
-
-    )
-
-    invoice_table = ttk.Treeview(
-        reports_table_frame,
-        columns=columns,
-        show="headings"
-    )
-
-    for col in columns:
-
-        invoice_table.heading(col, text=col)
-
-        invoice_table.column(
-            col,
-            width=120,
-            anchor=CENTER
-        )
-
-    scrollbar = Scrollbar(
-        reports_table_frame,
-        orient=VERTICAL,
-        command=invoice_table.yview
-    )
-
-    invoice_table.configure(
-        yscroll=scrollbar.set
-    )
-
-    scrollbar.pack(side=RIGHT, fill=Y)
-
-    invoice_table.pack(
-        fill=BOTH,
-        expand=True
-    )
-
-    # =====================================================
-    # VENDORS PAGE
-    # =====================================================
-
-    Label(
-        vendors_page,
-        text="Vendors",
-        font=("Segoe UI", 24, "bold"),
-        bg="#020617",
-        fg="white"
-    ).pack(pady=20)
-
-    vendor_table_frame = Frame(
-        vendors_page,
-        bg="#020617"
-    )
-
-    vendor_table_frame.pack(
-        fill=BOTH,
-        expand=True,
-        padx=20,
-        pady=10
-    )
-
-    vendors_table = ttk.Treeview(
-        vendor_table_frame,
-        show="headings"
-    )
-
-    vendor_columns = list(vendors_df.columns)
-
-    vendors_table["columns"] = vendor_columns
-
-    for col in vendor_columns:
-
-        vendors_table.heading(col, text=col)
-
-        vendors_table.column(
-            col,
-            width=170,
-            anchor=CENTER
-        )
-
-    for _, row in vendors_df.iterrows():
-
-        vendors_table.insert(
-            "",
-            END,
-            values=list(row)
-        )
-
-    vendor_scroll = Scrollbar(
-        vendor_table_frame,
-        orient=VERTICAL,
-        command=vendors_table.yview
-    )
-
-    vendors_table.configure(
-        yscroll=vendor_scroll.set
-    )
-
-    vendor_scroll.pack(side=RIGHT, fill=Y)
-
-    vendors_table.pack(
-        fill=BOTH,
-        expand=True
-    )
-
-    # =====================================================
-    # ADMIN PANEL PAGE
-    # =====================================================
-
-    Label(
-        admin_page,
-        text="Admin Panel",
-        font=("Segoe UI", 24, "bold"),
-        bg="#020617",
-        fg="white"
-    ).pack(pady=20)
-
-    admin_add_card = Frame(
-        admin_page,
-        bg="#1e293b",
-        padx=30,
-        pady=20,
-        highlightbackground="#00BFFF",
-        highlightthickness=1
-    )
-
-    admin_add_card.pack(padx=20, pady=10, fill=X)
-
-    Label(
-        admin_add_card,
-        text="Add New User",
-        font=("Segoe UI", 14, "bold"),
-        bg="#1e293b",
-        fg="#00BFFF"
-    ).grid(row=0, column=0, columnspan=4, pady=(0, 15), sticky=W)
-
-    Label(
-        admin_add_card,
-        text="Username",
-        font=("Segoe UI", 10, "bold"),
-        bg="#1e293b",
-        fg="white"
-    ).grid(row=1, column=0, padx=10, sticky=W)
-
-    new_username_entry = Entry(
-        admin_add_card,
-        width=30,
-        font=("Segoe UI", 10),
-        bg="#334155",
-        fg="white",
-        relief="flat",
-        insertbackground="white"
-    )
-
-    new_username_entry.grid(row=1, column=1, padx=10)
-
-    Label(
-        admin_add_card,
-        text="Password",
-        font=("Segoe UI", 10, "bold"),
-        bg="#1e293b",
-        fg="white"
-    ).grid(row=1, column=2, padx=10, sticky=W)
-
-    new_password_entry = Entry(
-        admin_add_card,
-        width=30,
-        font=("Segoe UI", 10),
-        bg="#334155",
-        fg="white",
-        relief="flat",
-        insertbackground="white",
-        show="*"
-    )
-
-    new_password_entry.grid(row=1, column=3, padx=10)
-
-    def add_user():
-
-        new_username = new_username_entry.get().strip()
-
-        new_password = new_password_entry.get().strip()
-
-        if new_username == "" or new_password == "":
-
-            messagebox.showwarning(
-                "Warning",
-                "Please enter both username and password"
-            )
-
-            return
-
-        try:
-
-            cursor.execute(
-
-                "INSERT INTO users (username, password) VALUES (?, ?)",
-
-                (new_username, new_password)
-
-            )
-
-            conn.commit()
-
-            new_username_entry.delete(0, END)
-
-            new_password_entry.delete(0, END)
-
-            load_users_table()
-
-            messagebox.showinfo(
-                "DONE",
-                "User Added Successfully ✅"
-            )
-
-        except sqlite3.IntegrityError:
-
-            messagebox.showerror(
-                "Error",
-                "Username already exists"
-            )
-
-    add_user_btn = Button(
-        admin_add_card,
-        text="ADD USER",
-        command=add_user,
-        font=("Segoe UI", 10, "bold"),
-        bg="#10B981",
-        fg="white",
-        width=18,
-        height=1,
-        relief="flat",
-        cursor="hand2"
-    )
-
-    add_user_btn.grid(row=1, column=4, padx=15)
-
-    add_hover_effect(add_user_btn, "#10B981", "#34D399")
-
-    admin_table_frame = Frame(
-        admin_page,
-        bg="#020617"
-    )
-
-    admin_table_frame.pack(
-        fill=BOTH,
-        expand=True,
-        padx=20,
-        pady=10
-    )
-
-    users_table = ttk.Treeview(
-        admin_table_frame,
-        columns=("ID", "Username"),
-        show="headings"
-    )
-
-    users_table.heading("ID", text="ID")
-
-    users_table.heading("Username", text="Username")
-
-    users_table.column("ID", width=80, anchor=CENTER)
-
-    users_table.column("Username", width=300, anchor=CENTER)
-
-    users_scroll = Scrollbar(
-        admin_table_frame,
-        orient=VERTICAL,
-        command=users_table.yview
-    )
-
-    users_table.configure(
-        yscroll=users_scroll.set
-    )
-
-    users_scroll.pack(side=RIGHT, fill=Y)
-
-    users_table.pack(
-        fill=BOTH,
-        expand=True
-    )
-
-    def load_users_table():
-
-        for row in users_table.get_children():
-
-            users_table.delete(row)
-
-        cursor.execute("SELECT id, username FROM users ORDER BY id")
-
-        for row in cursor.fetchall():
-
-            users_table.insert("", END, values=row)
-
-    def delete_user():
-
-        selected = users_table.focus()
-
-        if not selected:
-
-            messagebox.showwarning(
-                "Warning",
-                "Please select a user"
-            )
-
-            return
-
-        values = users_table.item(selected, "values")
-
-        user_id = values[0]
-
-        username = values[1]
-
-        if username == "Bassma":
-
-            messagebox.showerror(
-                "Error",
-                "Cannot delete the admin account"
-            )
-
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirm",
-            f"Delete user '{username}'?"
-        )
-
-        if confirm:
-
-            cursor.execute(
-                "DELETE FROM users WHERE id=?",
-                (user_id,)
-            )
-
-            conn.commit()
-
-            load_users_table()
-
-            messagebox.showinfo(
-                "DONE",
-                "User Deleted Successfully ✅"
-            )
-
-    admin_button_frame = Frame(
-        admin_page,
-        bg="#020617"
-    )
-
-    admin_button_frame.pack(pady=15)
-
-    delete_user_btn = Button(
-        admin_button_frame,
-        text="DELETE SELECTED USER",
-        command=delete_user,
-        font=("Segoe UI", 10, "bold"),
-        bg="#EF4444",
-        fg="white",
-        width=24,
-        height=2,
-        relief="flat",
-        cursor="hand2"
-    )
-
-    delete_user_btn.pack()
-
-    add_hover_effect(delete_user_btn, "#EF4444", "#F87171")
-
-    # =====================================================
-    # START
-    # =====================================================
-
-    update_dashboard()
-
-    show_dashboard()
-
-# =========================================================
-# LOGIN SCREEN
-# =========================================================
-
-login_frame = Frame(
-    root,
-    bg="#1e293b",
-    padx=70,
-    pady=60
-)
-
-login_frame.place(
-    relx=0.5,
-    rely=0.5,
-    anchor=CENTER
-)
-
-# =========================================================
-# LOGIN LOGO
-# =========================================================
-
-login_img = Image.open("logo.png")
-
-login_img = login_img.resize((150, 150))
-
-login_logo = ImageTk.PhotoImage(login_img)
-
-login_logo_label = Label(
-    login_frame,
-    image=login_logo,
-    bg="#1e293b"
-)
-
-login_logo_label.image = login_logo
-
-login_logo_label.pack(pady=10)
-
-# =========================================================
-# TITLE
-# =========================================================
-
-Label(
-    login_frame,
-    text="LOGIN",
-    font=("Segoe UI", 28, "bold"),
-    bg="#1e293b",
-    fg="#00BFFF"
-).pack(pady=(15, 5))
-
-Label(
-    login_frame,
-    text="Non-Air Operations ERP System",
-    font=("Segoe UI", 10),
-    bg="#1e293b",
-    fg="#94a3b8"
-).pack(pady=(0, 20))
-
-# =========================================================
-# USERNAME
-# =========================================================
-
-Label(
-    login_frame,
-    text="Username",
-    font=("Segoe UI", 10, "bold"),
-    bg="#1e293b",
-    fg="white"
-).pack()
-
-user_entry = Entry(
-    login_frame,
-    width=32,
-    font=("Segoe UI", 11),
-    bg="#334155",
-    fg="white",
-    relief="flat",
-    insertbackground="white"
-)
-
-user_entry.pack(pady=10, ipady=5)
-
-# =========================================================
-# PASSWORD
-# =========================================================
-
-Label(
-    login_frame,
-    text="Password",
-    font=("Segoe UI", 10, "bold"),
-    bg="#1e293b",
-    fg="white"
-).pack()
-
-pass_entry = Entry(
-    login_frame,
-    show="*",
-    width=32,
-    font=("Segoe UI", 11),
-    bg="#334155",
-    fg="white",
-    relief="flat",
-    insertbackground="white"
-)
-
-pass_entry.pack(pady=10, ipady=5)
-
-# =========================================================
-# LOGIN BUTTON
-# =========================================================
-
-login_btn = Button(
-    login_frame,
-    text="LOGIN",
-    command=login,
-    font=("Segoe UI", 11, "bold"),
-    bg="#0ea5e9",
-    fg="white",
-    activebackground="#0284c7",
-    activeforeground="white",
-    width=22,
-    height=2,
-    relief="flat",
-    cursor="hand2"
-)
-
-login_btn.pack(pady=25)
-
-# =========================================================
-# FOOTER
-# =========================================================
-
-Label(
-    login_frame,
-    text="Powered By Brightstar",
-    font=("Segoe UI", 8),
-    bg="#1e293b",
-    fg="#64748b"
-).pack(pady=(15, 0))
-
-# =========================================================
-# RUN
-# =========================================================
-root.mainloop()
+            st.image("logo.png", use_container_width=True)
+        except:
+            pass
+
+        st.markdown(f"""
+        <div style="
+            text-align: center;
+            padding: 12px 0 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            margin-bottom: 16px;
+        ">
+            <div style="
+                color: white;
+                font-size: 15px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                line-height: 1.4;
+            ">Non-Air Operations ERP</div>
+            <div style="
+                color: #93C5FD;
+                font-size: 12px;
+                margin-top: 4px;
+            ">Welcome, {st.session_state.current_user}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury"]
+        if st.session_state.current_user == "Bassma":
+            pages.append("Admin Panel")
+        pages.append("Support")
+
+        for page in pages:
+            if st.button(page, use_container_width=True, key=f"nav_{page}"):
+                st.session_state.page = page
+
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="
+            border-top: 1px solid rgba(255,255,255,0.15);
+            padding-top: 12px;
+        "></div>
+        """, unsafe_allow_html=True)
+
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.current_user = ""
+            st.rerun()
+
+    if st.session_state.page == "Dashboard":
+        show_dashboard()
+    elif st.session_state.page == "Invoices":
+        show_invoices()
+    elif st.session_state.page == "Reports":
+        show_reports()
+    elif st.session_state.page == "Vendors":
+        vendors_df = load_vendors()
+        st.markdown("# Vendors")
+        st.dataframe(vendors_df, use_container_width=True, height=500)
+    elif st.session_state.page == "Treasury":
+        show_treasury()
+    elif st.session_state.page == "Admin Panel":
+        show_admin()
+    elif st.session_state.page == "Support":
+        st.markdown("""
+        <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
+            <span style="color:white; font-size:20px; font-weight:700;">🎧 Technical Support</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin-bottom:20px;">Contact Information</p>', unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">RESPONSIBLE PERSON</p>
+                <p style="font-size:22px;font-weight:700;color:#1A3A5C;margin:8px 0 0 0;">Mody</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #22C55E;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">PHONE NUMBER</p>
+                <p style="font-size:22px;font-weight:700;color:#1A7A4A;margin:8px 0 0 0;">010000000000</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                <p style="font-size:13px;color:#6B7280;font-weight:600;margin:0;">EMAIL</p>
+                <p style="font-size:18px;font-weight:700;color:#B45309;margin:8px 0 0 0;">Bright.Star@moonstone.com</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:20px 24px;">
+            <p style="color:#1A3A5C;font-weight:700;font-size:15px;margin:0 0 8px 0;">📋 Support Hours</p>
+            <p style="color:#374151;margin:0;font-size:14px;">Sunday – Thursday: 9:00 AM – 5:00 PM</p>
+            <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
+        </div>
+        """, unsafe_allow_html=True)
