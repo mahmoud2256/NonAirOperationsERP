@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 from datetime import date, datetime
-import io
+DB_URL = st.secrets["DATABASE_URL"]
 import urllib.parse
 
 try:
