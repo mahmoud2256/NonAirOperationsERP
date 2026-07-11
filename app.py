@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 from datetime import date, datetime
-DB_URL = st.secrets["DATABASE_URL"]
+import io
 import urllib.parse
 
 try:
@@ -31,13 +31,18 @@ st.set_page_config(
 # =========================================================
 # DATABASE CONNECTION
 # =========================================================
-# ⚠️ حط الباسوورد بتاعك هنا بدل YOUR_PASSWORD_HERE
+# DATABASE CONNECTION
+# =========================================================
 
-DB_URL = "postgresql://postgres.edoljqkvyxtwrvphwdp:Mmooddyy87A@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
+DB_URL = st.secrets["DATABASE_URL"]
 
 def get_cursor():
     try:
-        conn = psycopg2.connect(DB_URL, connect_timeout=10)
+        conn = psycopg2.connect(
+            DB_URL,
+            connect_timeout=30,
+            sslmode='require'
+        )
         conn.autocommit = True
         return conn.cursor()
     except Exception as e:
