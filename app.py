@@ -35,14 +35,14 @@ st.set_page_config(
 
 DB_URL = "postgresql://postgres.iqbdoznbpsefaqqohqvz:YOUR_PASSWORD_HERE@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
 
-@st.cache_resource
-def get_connection():
-    return psycopg2.connect(DB_URL)
-
 def get_cursor():
-    conn = get_connection()
-    conn.autocommit = True
-    return conn.cursor()
+    try:
+        conn = psycopg2.connect(DB_URL, connect_timeout=10)
+        conn.autocommit = True
+        return conn.cursor()
+    except Exception as e:
+        st.error(f"Database connection error: {e}")
+        st.stop()
 
 # =========================================================
 # CREATE TABLES
@@ -1462,3 +1462,4 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
+
