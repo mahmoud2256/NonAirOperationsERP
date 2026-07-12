@@ -32,22 +32,43 @@ st.set_page_config(
 # DATABASE CONNECTION
 # =========================================================
 
+@st.cache_resource
+def get_connection():
+    return psycopg2.connect(
+        host="aws-0-eu-west-1.pooler.supabase.com",
+        port=6543,
+        dbname="postgres",
+        user="postgres.edoljqkvyxtwrvvphwdp",
+        password="Mmooddyy87A",
+        sslmode="require",
+        connect_timeout=30
+    )
+
 def get_cursor():
     try:
-        conn = psycopg2.connect(
-            host="aws-0-eu-west-1.pooler.supabase.com",
-            port=6543,
-            dbname="postgres",
-            user="postgres.edoljqkvyxtwrvvphwdp",
-            password="Mmooddyy87A",
-            sslmode="require",
-            connect_timeout=30
-        )
+        conn = get_connection()
+        if conn.closed:
+            st.cache_resource.clear()
+            conn = get_connection()
         conn.autocommit = True
         return conn.cursor()
     except Exception as e:
-        st.error(f"Database connection error: {e}")
-        st.stop()
+        try:
+            st.cache_resource.clear()
+            conn = psycopg2.connect(
+                host="aws-0-eu-west-1.pooler.supabase.com",
+                port=6543,
+                dbname="postgres",
+                user="postgres.edoljqkvyxtwrvvphwdp",
+                password="Mmooddyy87A",
+                sslmode="require",
+                connect_timeout=30
+            )
+            conn.autocommit = True
+            return conn.cursor()
+        except Exception as e2:
+            st.error(f"Database connection error: {e2}")
+            st.stop()
 
 # =========================================================
 # CREATE TABLES
