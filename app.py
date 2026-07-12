@@ -39,7 +39,7 @@ def get_cursor():
             port=6543,
             dbname="postgres",
             user="postgres.edoljqkvyxtwrvvphwdp",
-            password="Kanoo2026",
+            password="Mmooddyy87A",
             sslmode="require",
             connect_timeout=30
         )
