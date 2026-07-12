@@ -31,17 +31,17 @@ st.set_page_config(
 # =========================================================
 # DATABASE CONNECTION
 # =========================================================
-# DATABASE CONNECTION
-# =========================================================
-
-DB_URL = st.secrets["DATABASE_URL"]
 
 def get_cursor():
     try:
         conn = psycopg2.connect(
-            DB_URL,
-            connect_timeout=30,
-            sslmode='require'
+            host="aws-0-eu-west-1.pooler.supabase.com",
+            port=6543,
+            dbname="postgres",
+            user="postgres.edoljqkvyxtwrvvphwdp",
+            password="Kanoo2026",
+            sslmode="require",
+            connect_timeout=30
         )
         conn.autocommit = True
         return conn.cursor()
@@ -1610,4 +1610,3 @@ else:
             <p style="color:#374151;margin:4px 0 0 0;font-size:14px;">Friday – Saturday: Closed</p>
         </div>
         """, unsafe_allow_html=True)
-
