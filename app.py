@@ -100,6 +100,8 @@ def create_tables():
         no_of_pax INTEGER,
         supplier_invoice_no TEXT,
         po_number TEXT,
+        gross_amount REAL DEFAULT 0,
+        hidden_commission REAL DEFAULT 0,
         total_amount REAL,
         paid_to_supplier REAL,
         handling_fees REAL,
@@ -109,6 +111,13 @@ def create_tables():
         created_by TEXT
     )
     """)
+
+    # Add new columns to existing table if they don't exist
+    try:
+        cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS gross_amount REAL DEFAULT 0")
+        cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS hidden_commission REAL DEFAULT 0")
+    except:
+        pass
 
     # Treasury accounts (banks + cash boxes)
     cur.execute("""
@@ -141,7 +150,7 @@ def create_tables():
 
     cur.execute("""
     INSERT INTO users (username, password)
-    VALUES ('Mahmoud', '1234')
+    VALUES ('Bassma', '1234')
     ON CONFLICT (username) DO NOTHING
     """)
 
@@ -1257,44 +1266,79 @@ def show_invoices():
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
+        traveller_name = st.text_input("Traveller Name")
+    with c2:
+        origin_city = st.text_input("Origin City")
+    with c3:
+        destination_city = st.text_input("Destination City")
+    with c4:
         city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
                            index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
                            if vendor_city in EGYPT_GOVERNORATES else 0)
-    with c2:
-        pax = st.number_input("No. of PAX", min_value=0, step=1)
-    with c3:
-        supplier_inv_no = st.text_input("Supplier Invoice No")
-    with c4:
-        po = st.text_input("PO")
-
-    # ── ROW 4: AMOUNTS ─────────────────────────────────────
-    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details</p>', unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        paid_to_supplier = st.number_input("Paid To Supplier", min_value=0.0, step=0.01, key="paid")
+        pax = st.number_input("No. of PAX", min_value=0, step=1)
     with c2:
-        rate = get_handling_rate(accounts_val) if accounts_val else None
+        supplier_inv_no = st.text_input("Supplier Invoice No")
+    with c3:
+        po = st.text_input("PO")
+    with c4:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    # ── ROW 4: AMOUNTS ─────────────────────────────────────
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details — Vendor Side</p>', unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        gross_amount = st.number_input("Gross Amount (Basic Fare)", min_value=0.0, step=0.01, key="gross")
+    with c2:
+        hidden_commission = st.number_input("Hidden Commission (SUP Commission)", min_value=0.0, step=0.01, key="hidden")
+    with c3:
+        currency = st.selectbox("Currency", ["EGP", "USD"])
+    with c4:
+        paid_to_supplier = gross_amount - hidden_commission
+        st.markdown(f"""
+        <div style="margin-top:4px;">
+            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Paid To Supplier (Auto)</label>
+            <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                <span style="font-size:20px;font-weight:700;color:#1A7A4A;">{paid_to_supplier:,.2f}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details — Customer Side</p>', unsafe_allow_html=True)
+
+    rate = get_handling_rate(accounts_val) if accounts_val else None
+
+    c1, c2 = st.columns(2)
+    with c1:
         if rate:
-            handling_fees = paid_to_supplier * rate
+            handling_fees = gross_amount * rate
             st.markdown(f"""
             <div style="margin-top:4px;">
-                <label style="font-size:14px;color:#374151;font-weight:500;">Handling Fees ({rate*100:.1f}%)</label>
+                <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Handling Fees ({rate*100:.1f}% of Gross)</label>
                 <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:18px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
+                    <span style="font-size:20px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
         else:
             handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
-    with c3:
-        currency = st.selectbox("Currency", ["EGP", "USD"])
-    with c4:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    with c2:
+        vat = handling_fees * VAT_RATE
+        st.markdown(f"""
+        <div style="margin-top:4px;">
+            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT (14% of Handling)</label>
+            <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                <span style="font-size:20px;font-weight:700;color:#B45309;">{vat:,.2f}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── TOTALS BAR ─────────────────────────────────────────
-    vat = handling_fees * VAT_RATE
-    total = paid_to_supplier + handling_fees + vat
+    total_customer = gross_amount + handling_fees + vat
+    total_profit = hidden_commission + handling_fees
 
     st.markdown(f"""
     <div style="
@@ -1303,22 +1347,28 @@ def show_invoices():
         padding: 20px 28px;
         margin: 20px 0;
         display: flex;
-        gap: 60px;
+        gap: 40px;
         align-items: center;
+        flex-wrap: wrap;
     ">
         <div>
-            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">VAT (14%)</div>
-            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{vat:,.2f}</div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">CUSTOMER TOTAL</div>
+            <div style="color:#4ADE80; font-size:26px; font-weight:800;">{total_customer:,.2f} <span style="font-size:14px;color:#86EFAC;">{currency}</span></div>
         </div>
-        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
-        <div>
-            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">TOTAL AMOUNT</div>
-            <div style="color:#4ADE80; font-size:28px; font-weight:800; font-family:'Segoe UI',Arial,sans-serif;">{total:,.2f} <span style="font-size:16px; color:#86EFAC;">{currency}</span></div>
-        </div>
-        <div style="width:1px; background:rgba(255,255,255,0.2); height:40px;"></div>
+        <div style="width:1px;background:rgba(255,255,255,0.2);height:40px;"></div>
         <div>
             <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">PAID TO SUPPLIER</div>
-            <div style="color:white; font-size:22px; font-weight:700; font-family:'Segoe UI',Arial,sans-serif;">{paid_to_supplier:,.2f}</div>
+            <div style="color:white; font-size:22px; font-weight:700;">{paid_to_supplier:,.2f}</div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,0.2);height:40px;"></div>
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">HIDDEN COMMISSION</div>
+            <div style="color:#FCD34D; font-size:22px; font-weight:700;">{hidden_commission:,.2f}</div>
+        </div>
+        <div style="width:1px;background:rgba(255,255,255,0.2);height:40px;"></div>
+        <div>
+            <div style="color:#93C5FD; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:4px;">TOTAL PROFIT</div>
+            <div style="color:#34D399; font-size:22px; font-weight:700;">{total_profit:,.2f}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1338,15 +1388,17 @@ def show_invoices():
                 date, invoice_no, owner, accounts, service_date,
                 subject, service_type, supplier, supplier_city,
                 no_of_pax, supplier_invoice_no, po_number,
+                gross_amount, hidden_commission,
                 total_amount, paid_to_supplier, handling_fees,
                 vat, currency, payment_status, created_by
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 str(inv_date), invoice_no, owner, accounts_val,
                 str(service_date), subject, service_type, vendor,
                 vendor_city or city, pax, supplier_inv_no, po,
-                total, paid_to_supplier, handling_fees, vat,
-                currency, "Pending", st.session_state.current_user
+                gross_amount, hidden_commission,
+                total_customer, paid_to_supplier, handling_fees,
+                vat, currency, "Pending", st.session_state.current_user
             ))
             st.success("✅ Invoice Generated Successfully!")
             st.balloons()
@@ -1364,27 +1416,39 @@ def show_invoices():
                 "no_of_pax": pax,
                 "supplier_invoice_no": supplier_inv_no,
                 "po_number": po,
-                "total_amount": total,
+                "gross_amount": gross_amount,
+                "hidden_commission": hidden_commission,
+                "total_amount": total_customer,
                 "paid_to_supplier": paid_to_supplier,
                 "handling_fees": handling_fees,
                 "vat": vat,
+                "total_profit": total_profit,
                 "currency": currency,
             }
 
-            col_pdf, col_wa, col_empty = st.columns([1, 1, 2])
+            col_pdf_v, col_pdf_c, col_wa = st.columns([1, 1, 1])
 
-            with col_pdf:
+            with col_pdf_v:
                 if REPORTLAB_AVAILABLE:
                     pdf_buffer = generate_invoice_pdf(invoice_data)
                     st.download_button(
-                        label="📄 Download PDF",
+                        label="📄 Vendor Invoice PDF",
                         data=pdf_buffer,
-                        file_name=f"Invoice_{invoice_no}.pdf",
+                        file_name=f"Vendor_Invoice_{invoice_no}.pdf",
                         mime="application/pdf",
                         use_container_width=True
                     )
-                else:
-                    st.warning("PDF not available")
+
+            with col_pdf_c:
+                if REPORTLAB_AVAILABLE:
+                    customer_pdf = generate_customer_invoice_pdf(invoice_data)
+                    st.download_button(
+                        label="🧾 Customer Invoice PDF",
+                        data=customer_pdf,
+                        file_name=f"Customer_Invoice_{invoice_no}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
 
             with col_wa:
                 wa_message = (
@@ -1393,9 +1457,8 @@ def show_invoices():
                     f"Date: {inv_date}\n"
                     f"Vendor: {vendor}\n"
                     f"Account: {accounts_val}\n"
-                    f"Total: {total:,.2f} {currency}\n"
-                    f"VAT: {vat:,.2f}\n"
-                    f"Handling: {handling_fees:,.2f}\n\n"
+                    f"Customer Total: {total_customer:,.2f} {currency}\n"
+                    f"Profit: {total_profit:,.2f}\n\n"
                     f"Generated by Non-Air Operations ERP"
                 )
                 wa_url = f"https://wa.me/{SUPPORT_WHATSAPP}?text={urllib.parse.quote(wa_message)}"
@@ -1499,7 +1562,7 @@ def show_admin():
 
         del_username = st.selectbox(
             "Select user to delete",
-            [u[1] for u in users if u[1] != "Mahmoud"]
+            [u[1] for u in users if u[1] != "Bassma"]
         )
         if st.button("🗑️ DELETE SELECTED USER", type="primary"):
             cur.execute("DELETE FROM users WHERE username=%s", (del_username,))
@@ -1551,7 +1614,7 @@ else:
         """, unsafe_allow_html=True)
 
         pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury"]
-        if st.session_state.current_user == "Mahmoud":
+        if st.session_state.current_user == "Bassma":
             pages.append("Admin Panel")
         pages.append("Support")
 
