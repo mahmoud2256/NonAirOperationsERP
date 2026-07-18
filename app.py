@@ -1255,6 +1255,23 @@ def show_invoices():
     with c4:
         vendor = st.selectbox("Vendor", [""] + vendors)
 
+    # ── VAT REGISTRATION ───────────────────────────────────
+    c1, c2 = st.columns(2)
+    with c1:
+        supplier_vat = st.selectbox(
+            "🏭 Supplier VAT Registered?",
+            ["Yes — خاضع للقيمة المضافة", "No — غير خاضع"],
+            key="supplier_vat"
+        )
+        supplier_vat_registered = supplier_vat.startswith("Yes")
+    with c2:
+        client_vat = st.selectbox(
+            "👤 Client VAT Registered?",
+            ["Yes — خاضع للقيمة المضافة", "No — غير خاضع"],
+            key="client_vat"
+        )
+        client_vat_registered = client_vat.startswith("Yes")
+
     # ── ROW 3 ──────────────────────────────────────────────
     st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Service Details</p>', unsafe_allow_html=True)
 
