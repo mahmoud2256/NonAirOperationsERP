@@ -84,6 +84,13 @@ def _map_row(row: dict) -> dict:
     mapped["paid_to_supplier"] = gross_amount - hidden_commission
     mapped.setdefault("handling_fees", mapped.get("s_fee", 0.0))
 
+    # In this export format, "Airline Code" actually holds the vendor
+    # name for non-flight services too (hotel, restaurant, etc.) — the
+    # Dashboard's Vendor Analysis filters on the "supplier" column, so
+    # copy it there as well.
+    if mapped.get("airline_code") and not mapped.get("supplier"):
+        mapped["supplier"] = mapped["airline_code"]
+
     return mapped
 
 
