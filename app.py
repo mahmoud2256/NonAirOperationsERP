@@ -1361,7 +1361,7 @@ def show_invoices():
         else:
             handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
     with c2:
-        if supplier_vat_registered:
+        if client_vat_registered:
             vat = handling_fees * VAT_RATE
             st.markdown(f"""
             <div style="margin-top:4px;">
@@ -1377,7 +1377,7 @@ def show_invoices():
             <div style="margin-top:4px;">
                 <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT</label>
                 <div style="background:#F3F4F6;border:1px solid #D1D5DB;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:14px;font-weight:600;color:#6B7280;">Not applicable — supplier not VAT registered</span>
+                    <span style="font-size:14px;font-weight:600;color:#6B7280;">Not applicable — client not VAT registered</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
