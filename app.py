@@ -190,8 +190,19 @@ def get_handling_rate(account_name):
 # LOAD EXCEL FILES
 # =========================================================
 
+import os
+
+def _file_version(path):
+    """Returns the file's last-modified time, used as a cache-busting key
+    so Streamlit reloads the Excel file automatically whenever it changes
+    (no manual 'Reboot app' needed anymore)."""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0
+
 @st.cache_data
-def load_vendors():
+def load_vendors(_version=None):
     try:
         df = pd.read_excel("vendors.xlsx").fillna("")
         if "City" not in df.columns:
@@ -201,7 +212,7 @@ def load_vendors():
         return pd.DataFrame(columns=["Alias", "City"])
 
 @st.cache_data
-def load_issuers():
+def load_issuers(_version=None):
     try:
         df = pd.read_excel("issuers.xlsx").fillna("")
         return df["Issuer"].tolist()
@@ -209,7 +220,7 @@ def load_issuers():
         return []
 
 @st.cache_data
-def load_accounts():
+def load_accounts(_version=None):
     try:
         df = pd.read_excel("accounts.xlsx").fillna("")
         return [str(x) for x in df["Accounts"].tolist() if str(x).strip() != ""]
@@ -877,7 +888,7 @@ def show_dashboard():
 
     # Vendor Analysis
     st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
-    vendors_df = load_vendors()
+    vendors_df = load_vendors(_file_version("vendors.xlsx"))
     vendors = vendors_df["Alias"].tolist()
     selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
     if selected_vendor:
@@ -904,7 +915,7 @@ def show_dashboard():
 
     # Customer Analysis
     st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
-    accounts = load_accounts()
+    accounts = load_accounts(_file_version("accounts.xlsx"))
     selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
     if selected_account:
         cur4 = get_cursor()
@@ -1152,10 +1163,10 @@ def show_treasury():
 
 def show_invoices():
 
-    vendors_df = load_vendors()
+    vendors_df = load_vendors(_file_version("vendors.xlsx"))
     vendors = vendors_df["Alias"].tolist()
-    issuers = load_issuers()
-    accounts = load_accounts()
+    issuers = load_issuers(_file_version("issuers.xlsx"))
+    accounts = load_accounts(_file_version("accounts.xlsx"))
 
     st.markdown("""
     <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
@@ -1597,7 +1608,7 @@ else:
     elif st.session_state.page == "Reports":
         show_reports()
     elif st.session_state.page == "Vendors":
-        vendors_df = load_vendors()
+        vendors_df = load_vendors(_file_version("vendors.xlsx"))
         st.markdown("# Vendors")
         st.dataframe(vendors_df, use_container_width=True, height=500)
     elif st.session_state.page == "Treasury":
