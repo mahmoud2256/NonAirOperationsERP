@@ -176,6 +176,15 @@ SERVICE_TYPES = [
     "Conference / MICE", "Other"
 ]
 
+CURRENCIES = [
+    "EGP", "USD", "EUR", "GBP", "SAR", "AED", "KWD", "QAR", "BHD", "OMR",
+    "JOD", "LBP", "IQD", "LYD", "TND", "MAD", "DZD", "SDG", "YER",
+    "CHF", "JPY", "CNY", "INR", "TRY", "RUB", "CAD", "AUD", "NZD",
+    "SGD", "HKD", "THB", "MYR", "IDR", "PHP", "VND", "KRW", "ZAR",
+    "NGN", "KES", "GHS", "ETB", "BRL", "MXN", "ARS", "SEK", "NOK",
+    "DKK", "PLN", "CZK", "HUF", "RON", "ILS", "PKR", "BDT", "LKR",
+]
+
 VAT_RATE = 0.14
 
 def get_handling_rate(account_name):
@@ -1081,7 +1090,7 @@ def show_treasury():
                     "Receipt", "Transfer"
                 ], key="t_type")
             with c3:
-                t_currency = st.selectbox("Currency", ["EGP", "USD"], key="t_currency")
+                t_currency = st.selectbox("Currency", CURRENCIES, key="t_currency")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -1153,7 +1162,7 @@ def show_treasury():
         with c2:
             acc_type = st.selectbox("Type", ["Bank", "Cash"])
         with c3:
-            acc_currency = st.selectbox("Currency", ["EGP", "USD"], key="acc_cur")
+            acc_currency = st.selectbox("Currency", CURRENCIES, key="acc_cur")
         with c4:
             acc_opening = st.number_input("Opening Balance", min_value=0.0, step=0.01)
 
@@ -1263,9 +1272,9 @@ def show_invoices():
     with c1:
         traveller_name = st.text_input("Traveller Name")
     with c2:
-        origin_city = st.text_input("Origin City")
+        origin_city = st.selectbox("Origin City", [""] + EGYPT_GOVERNORATES, key="origin_city_select")
     with c3:
-        destination_city = st.text_input("Destination City")
+        destination_city = st.selectbox("Destination City", [""] + EGYPT_GOVERNORATES, key="destination_city_select")
     with c4:
         city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
                            index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
@@ -1290,7 +1299,7 @@ def show_invoices():
     with c2:
         hidden_commission = st.number_input("Hidden Commission (SUP Commission)", min_value=0.0, step=0.01, key="hidden")
     with c3:
-        currency = st.selectbox("Currency", ["EGP", "USD"])
+        currency = st.selectbox("Currency", CURRENCIES)
     with c4:
         paid_to_supplier = gross_amount - hidden_commission
         st.markdown(f"""
@@ -1321,15 +1330,26 @@ def show_invoices():
         else:
             handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
     with c2:
-        vat = handling_fees * VAT_RATE
-        st.markdown(f"""
-        <div style="margin-top:4px;">
-            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT (14% of Handling)</label>
-            <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                <span style="font-size:20px;font-weight:700;color:#B45309;">{vat:,.2f}</span>
+        if supplier_vat_registered:
+            vat = handling_fees * VAT_RATE
+            st.markdown(f"""
+            <div style="margin-top:4px;">
+                <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT (14% of Handling)</label>
+                <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:20px;font-weight:700;color:#B45309;">{vat:,.2f}</span>
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        else:
+            vat = 0.0
+            st.markdown(f"""
+            <div style="margin-top:4px;">
+                <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT</label>
+                <div style="background:#F3F4F6;border:1px solid #D1D5DB;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:14px;font-weight:600;color:#6B7280;">Not applicable — supplier not VAT registered</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # ── TOTALS BAR ─────────────────────────────────────────
     total_customer = gross_amount + handling_fees + vat
@@ -1608,7 +1628,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury", "Import"]
+        pages = ["Dashboard", "Invoices", "Reports", "Treasury", "Import"]
         if st.session_state.current_user == "Mahmoud":
             pages.append("Admin Panel")
         pages.append("Support")
@@ -1637,10 +1657,6 @@ else:
         show_invoices()
     elif st.session_state.page == "Reports":
         show_reports()
-    elif st.session_state.page == "Vendors":
-        vendors_df = load_vendors(_file_version("vendors.xlsx"))
-        st.markdown("# Vendors")
-        st.dataframe(vendors_df, use_container_width=True, height=500)
     elif st.session_state.page == "Treasury":
         show_treasury()
     elif st.session_state.page == "Import":
