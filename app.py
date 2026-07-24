@@ -160,6 +160,24 @@ def create_tables():
 # STATIC DATA
 # =========================================================
 
+WORLD_COUNTRIES = [
+    "Egypt", "Saudi Arabia", "United Arab Emirates", "Kuwait", "Qatar",
+    "Bahrain", "Oman", "Jordan", "Lebanon", "Iraq", "Libya", "Tunisia",
+    "Morocco", "Algeria", "Sudan", "Yemen", "Palestine", "Syria",
+    "Turkey", "Cyprus", "Greece", "Italy", "Spain", "Portugal", "France",
+    "Germany", "United Kingdom", "Ireland", "Netherlands", "Belgium",
+    "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland",
+    "Poland", "Czech Republic", "Hungary", "Romania", "Bulgaria",
+    "Croatia", "Serbia", "Ukraine", "Russia", "United States", "Canada",
+    "Mexico", "Brazil", "Argentina", "Chile", "Colombia", "Peru",
+    "China", "Japan", "South Korea", "India", "Pakistan", "Bangladesh",
+    "Sri Lanka", "Nepal", "Thailand", "Vietnam", "Malaysia", "Singapore",
+    "Indonesia", "Philippines", "Hong Kong", "Taiwan", "Australia",
+    "New Zealand", "South Africa", "Kenya", "Nigeria", "Ethiopia",
+    "Ghana", "Tanzania", "Uganda", "Georgia", "Armenia", "Azerbaijan",
+    "Kazakhstan", "Uzbekistan", "Iran", "Israel", "Maldives", "Other",
+]
+
 EGYPT_GOVERNORATES = [
     "Cairo", "Giza", "Alexandria", "Qalyubia", "Port Said",
     "Suez", "Damietta", "Dakahlia", "Sharqia", "Gharbia",
@@ -1272,13 +1290,11 @@ def show_invoices():
     with c1:
         traveller_name = st.text_input("Traveller Name")
     with c2:
-        origin_city = st.selectbox("Origin City", [""] + EGYPT_GOVERNORATES, key="origin_city_select")
+        origin_city = st.selectbox("Origin Country", [""] + WORLD_COUNTRIES, key="origin_city_select")
     with c3:
-        destination_city = st.selectbox("Destination City", [""] + EGYPT_GOVERNORATES, key="destination_city_select")
+        destination_city = st.selectbox("Destination Country", [""] + WORLD_COUNTRIES, key="destination_city_select")
     with c4:
-        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
-                           index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
-                           if vendor_city in EGYPT_GOVERNORATES else 0)
+        city = st.text_input("City / Governorate", value=vendor_city or "")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -1322,8 +1338,8 @@ def show_invoices():
             st.markdown(f"""
             <div style="margin-top:4px;">
                 <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Handling Fees ({rate*100:.1f}% of Gross)</label>
-                <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:20px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
+                <div style="background:#DBEAFE;border:2px solid #3B82F6;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:20px;font-weight:800;color:#1A3A5C;">{handling_fees:,.2f}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1441,18 +1457,7 @@ def show_invoices():
                 "currency": currency,
             }
 
-            col_pdf_v, col_pdf_c, col_wa = st.columns([1, 1, 1])
-
-            with col_pdf_v:
-                if REPORTLAB_AVAILABLE:
-                    pdf_buffer = generate_invoice_pdf(invoice_data)
-                    st.download_button(
-                        label="📄 Vendor Invoice PDF",
-                        data=pdf_buffer,
-                        file_name=f"Vendor_Invoice_{invoice_no}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+            col_pdf_c, col_wa = st.columns([1, 1])
 
             with col_pdf_c:
                 if REPORTLAB_AVAILABLE:
