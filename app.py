@@ -5,6 +5,8 @@ from datetime import date, datetime
 import io
 import urllib.parse
 
+from import_invoices import show_import
+
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -1042,173 +1044,6 @@ def show_treasury():
         else:
             st.info("No accounts yet.")
 
-    st.markdown("# Operations Dashboard")
-
-    cur = get_cursor()
-    cur.execute("""
-    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
-    FROM invoices
-    """)
-    count, total_sales, total_revenue = cur.fetchone()
-
-    st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card" style="border-top: 3px solid #22C55E;">
-            <p class="metric-number" style="color:#1A7A4A;">{total_sales:,.0f}</p>
-            <p class="metric-label">Total Sales</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card" style="border-top: 3px solid #3B82F6;">
-            <p class="metric-number" style="color:#1A3A5C;">{total_revenue:,.0f}</p>
-            <p class="metric-label">Total Revenue (Paid to Supplier)</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card" style="border-top: 3px solid #F59E0B;">
-            <p class="metric-number" style="color:#B45309;">{count}</p>
-            <p class="metric-label">Invoices Count</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Treasury quick view
-    cur.execute("""
-    SELECT a.name, a.type, a.currency, a.opening_balance,
-        COALESCE((
-            SELECT SUM(CASE
-                WHEN type IN ('Deposit','Receipt','Transfer_In') THEN amount
-                WHEN type IN ('Withdrawal','Payment','Transfer_Out') THEN -amount
-                ELSE 0 END)
-            FROM treasury_transactions t WHERE t.account_id = a.id
-        ), 0) as movements
-    FROM treasury_accounts a ORDER BY a.type, a.name
-    """)
-    treasury_accs = cur.fetchall()
-
-    if treasury_accs:
-        banks_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Bank"]
-        cash_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Cash"]
-
-        if banks_data:
-            st.markdown('<p class="section-label">🏦 Bank Balances</p>', unsafe_allow_html=True)
-            cols = st.columns(min(len(banks_data), 4))
-            for i, (name, currency, balance) in enumerate(banks_data):
-                color = "#1A7A4A" if balance >= 0 else "#EF4444"
-                with cols[i % 4]:
-                    st.markdown(f"""
-                    <div class="metric-card" style="border-top:3px solid #1A3A5C;">
-                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
-                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
-                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-        if cash_data:
-            st.markdown('<p class="section-label">💰 Cash Balances</p>', unsafe_allow_html=True)
-            cols = st.columns(min(len(cash_data), 4))
-            for i, (name, currency, balance) in enumerate(cash_data):
-                color = "#1A7A4A" if balance >= 0 else "#EF4444"
-                with cols[i % 4]:
-                    st.markdown(f"""
-                    <div class="metric-card" style="border-top:3px solid #F59E0B;">
-                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
-                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
-                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-    st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
-
-    vendors_df = load_vendors()
-    vendors = vendors_df["Alias"].tolist()
-
-    selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
-
-    if selected_vendor:
-        cur.execute("""
-        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
-        FROM invoices WHERE supplier = %s
-        """, (selected_vendor,))
-        v_count, v_purchased, v_total = cur.fetchone()
-        v_profit = v_total - v_purchased
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
-                <p class="metric-number" style="color:#1A3A5C;">{v_purchased:,.0f}</p>
-                <p class="metric-label">Paid To Supplier</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #22C55E;">
-                <p class="metric-number" style="color:#1A7A4A;">{v_profit:,.0f}</p>
-                <p class="metric-label">Profit (Handling + VAT)</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
-                <p class="metric-number" style="color:#B45309;">{v_count}</p>
-                <p class="metric-label">Invoices With Vendor</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # ── CUSTOMER ANALYSIS ──────────────────────────────────
-    st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
-
-    accounts = load_accounts()
-
-    selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
-
-    if selected_account:
-        cur.execute("""
-        SELECT COUNT(*),
-               COALESCE(SUM(total_amount),0),
-               COALESCE(SUM(paid_to_supplier),0),
-               COALESCE(SUM(handling_fees),0),
-               COALESCE(SUM(vat),0)
-        FROM invoices WHERE accounts = %s
-        """, (selected_account,))
-        c_count, c_total, c_paid, c_handling, c_vat = cur.fetchone()
-        c_profit = c_handling + c_vat
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #1A3A5C;">
-                <p class="metric-number" style="color:#1A3A5C;">{c_count}</p>
-                <p class="metric-label">Invoices Count</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #22C55E;">
-                <p class="metric-number" style="color:#1A7A4A;">{c_total:,.0f}</p>
-                <p class="metric-label">Total Amount</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
-                <p class="metric-number" style="color:#1A3A5C;">{c_paid:,.0f}</p>
-                <p class="metric-label">Paid To Supplier</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
-                <p class="metric-number" style="color:#B45309;">{c_profit:,.0f}</p>
-                <p class="metric-label">Profit (Handling + VAT)</p>
-            </div>
-            """, unsafe_allow_html=True)
-
 # =========================================================
 # INVOICES PAGE
 # =========================================================
@@ -1630,7 +1465,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury"]
+        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury", "Import"]
         if st.session_state.current_user == "Mahmoud":
             pages.append("Admin Panel")
         pages.append("Support")
@@ -1665,6 +1500,8 @@ else:
         st.dataframe(vendors_df, use_container_width=True, height=500)
     elif st.session_state.page == "Treasury":
         show_treasury()
+    elif st.session_state.page == "Import":
+        show_import(get_cursor)
     elif st.session_state.page == "Admin Panel":
         show_admin()
     elif st.session_state.page == "Support":
