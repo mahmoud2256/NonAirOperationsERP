@@ -905,16 +905,18 @@ def show_dashboard():
 
         if filter_account != "All Customers":
             cur3.execute("""
-            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0),
+                   COALESCE(SUM(handling_fees),0), COALESCE(SUM(hidden_commission),0)
             FROM invoices WHERE supplier = %s AND accounts = %s
             """, (selected_vendor, filter_account))
         else:
             cur3.execute("""
-            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0),
+                   COALESCE(SUM(handling_fees),0), COALESCE(SUM(hidden_commission),0)
             FROM invoices WHERE supplier = %s
             """, (selected_vendor,))
-        v_count, v_purchased, v_total = cur3.fetchone()
-        v_profit = v_total - v_purchased
+        v_count, v_purchased, v_handling, v_hidden = cur3.fetchone()
+        v_profit = v_handling + v_hidden  # excludes VAT — VAT is a pass-through tax, not profit
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #3B82F6;">
@@ -955,7 +957,7 @@ def show_dashboard():
         FROM invoices WHERE accounts = %s
         """, (selected_account,))
         c_count, c_total, c_paid, c_handling, c_vat = cur4.fetchone()
-        c_profit = c_handling + c_vat
+        c_profit = c_handling  # excludes VAT — VAT is a pass-through tax, not profit
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #1A3A5C;">
