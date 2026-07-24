@@ -72,6 +72,18 @@ def _map_row(row: dict) -> dict:
             mapped[db_col] = "" if (isinstance(value, float) and pd.isna(value)) else str(value).strip()
     mapped.setdefault("payment_status", "Pending")
     mapped["source"] = "import"
+
+    # The dashboard's margin/profit numbers are calculated from
+    # paid_to_supplier and handling_fees — the source file doesn't have
+    # those exact column names, so compute them the same way the manual
+    # entry form does:
+    #   paid_to_supplier = Basic Fare (gross_amount) - SUP Commission (hidden_commission)
+    #   handling_fees     = S.FEE (the service fee charged to the customer)
+    gross_amount = mapped.get("gross_amount", 0.0)
+    hidden_commission = mapped.get("hidden_commission", 0.0)
+    mapped["paid_to_supplier"] = gross_amount - hidden_commission
+    mapped.setdefault("handling_fees", mapped.get("s_fee", 0.0))
+
     return mapped
 
 
