@@ -1,0 +1,81 @@
+-- Bright Star ERP: schema extension to support the full Kanoo-style
+-- invoice export format. Safe to run multiple times (IF NOT EXISTS).
+-- Run this once against your Supabase database before using the
+-- import feature.
+
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS traveller_name TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS requester TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ticket_number TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_multiplier REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS airline_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ext_status TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS creator TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dep_date TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS return_date TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS taxes REAL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS s_fee REAL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_on_commission REAL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS penalty REAL DEFAULT 0;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_client_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS form_of_payment_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_category TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_product_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_product_name TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_source TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS service_description TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ext_system_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS operational_status_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS financial_status_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS origin TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS destination TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS emp_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cost_centre TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS lpo_num TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS business_unit TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ordered_by TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS trip_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS delivered_to TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS type_of_travel TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS transaction_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS no_of_nights REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS classification TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sbu_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS project_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ticket_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bill_or_no_bill TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS frn_num TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tr_num TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS online_booking TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS authorized_by TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ms_trip_purpose TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dept_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS published_fare REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS class_of_travel TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS air_reason_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS supplier_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS company_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS trip_purpose_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS ta_num TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS confirmation_no TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS airline_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS embassy_name TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS visa_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS event_type TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS event_no_of_guests REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS voucher_no TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS exchange_rate REAL DEFAULT 1;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS outlet_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS lowest_fare REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS fare_wo_deal REAL;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS actual_responsible_user TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS class_code TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS class_name TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS request_date TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS request_notes TEXT;
+
+-- Marks rows that came in through the bulk importer (vs manual entry)
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
