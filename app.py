@@ -1327,6 +1327,21 @@ def show_invoices():
         </div>
         """, unsafe_allow_html=True)
 
+    # VAT on the vendor/purchase side — only applicable if the supplier
+    # itself is VAT registered, calculated on the Gross Amount (Basic Fare)
+    if supplier_vat_registered:
+        vendor_vat = gross_amount * VAT_RATE
+        st.markdown(f"""
+        <div style="margin-top:12px; max-width: 320px;">
+            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT on Purchase (14% of Gross)</label>
+            <div style="background:#FFFBEB;border:2px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                <span style="font-size:20px;font-weight:800;color:#B45309;">{vendor_vat:,.2f}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        vendor_vat = 0.0
+
     st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details — Customer Side</p>', unsafe_allow_html=True)
 
     rate = get_handling_rate(accounts_val) if accounts_val else None
