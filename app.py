@@ -893,10 +893,26 @@ def show_dashboard():
     selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
     if selected_vendor:
         cur3 = get_cursor()
-        cur3.execute("""
-        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
-        FROM invoices WHERE supplier = %s
-        """, (selected_vendor,))
+
+        # Optional: narrow down to one specific customer/account too
+        cur3.execute("SELECT DISTINCT accounts FROM invoices WHERE supplier = %s AND accounts IS NOT NULL ORDER BY accounts", (selected_vendor,))
+        vendor_accounts = [r[0] for r in cur3.fetchall()]
+        filter_account = st.selectbox(
+            "Filter by Customer (optional)",
+            ["All Customers"] + vendor_accounts,
+            key="vendor_account_filter"
+        )
+
+        if filter_account != "All Customers":
+            cur3.execute("""
+            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+            FROM invoices WHERE supplier = %s AND accounts = %s
+            """, (selected_vendor, filter_account))
+        else:
+            cur3.execute("""
+            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+            FROM invoices WHERE supplier = %s
+            """, (selected_vendor,))
         v_count, v_purchased, v_total = cur3.fetchone()
         v_profit = v_total - v_purchased
         col1, col2, col3 = st.columns(3)
@@ -912,6 +928,18 @@ def show_dashboard():
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #F59E0B;">
                 <p class="metric-number" style="color:#B45309;">{v_count}</p>
                 <p class="metric-label">Invoices With Vendor</p></div>""", unsafe_allow_html=True)
+
+        # Breakdown: how many invoices with this vendor, per customer
+        if filter_account == "All Customers" and len(vendor_accounts) > 1:
+            st.markdown("###### Breakdown by Customer")
+            cur3.execute("""
+            SELECT accounts, COUNT(*), COALESCE(SUM(total_amount),0)
+            FROM invoices WHERE supplier = %s AND accounts IS NOT NULL
+            GROUP BY accounts ORDER BY COUNT(*) DESC
+            """, (selected_vendor,))
+            breakdown_rows = cur3.fetchall()
+            breakdown_df = pd.DataFrame(breakdown_rows, columns=["Customer", "Invoices", "Total Amount"])
+            st.dataframe(breakdown_df, use_container_width=True, height=200)
 
     # Customer Analysis
     st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
