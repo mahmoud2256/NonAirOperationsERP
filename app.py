@@ -980,11 +980,12 @@ def show_dashboard():
         SELECT COUNT(*), COALESCE(SUM(total_amount),0),
                COALESCE(SUM(paid_to_supplier),0),
                COALESCE(SUM(handling_fees),0),
-               COALESCE(SUM(vat),0)
+               COALESCE(SUM(vat),0),
+               COALESCE(SUM(hidden_commission),0)
         FROM invoices WHERE accounts = %s
         """, (selected_account,))
-        c_count, c_total, c_paid, c_handling, c_vat = cur4.fetchone()
-        c_profit = c_handling  # excludes VAT — VAT is a pass-through tax, not profit
+        c_count, c_total, c_paid, c_handling, c_vat, c_hidden = cur4.fetchone()
+        c_profit = c_handling + c_hidden  # excludes VAT — VAT is a pass-through tax, not profit
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #1A3A5C;">
