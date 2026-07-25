@@ -86,8 +86,18 @@ def _map_row(row: dict) -> dict:
     #   handling_fees     = S.FEE (the service fee charged to the customer)
     gross_amount = mapped.get("gross_amount", 0.0)
     hidden_commission = mapped.get("hidden_commission", 0.0)
-    mapped["paid_to_supplier"] = gross_amount - hidden_commission
-    mapped.setdefault("handling_fees", mapped.get("s_fee", 0.0))
+    # Special case: "MANAGEMENT FEE" rows are a direct fee charged to
+    # the client with no underlying vendor purchase. Their S.FEE is
+    # often 0 and the real fee amount sits in TOTAL instead — so for
+    # these rows, treat the full TOTAL as the profit-bearing handling
+    # fee, and there's no supplier cost to pay out.
+    is_management_fee = str(mapped.get("airline_code", "")).strip().upper() == "MANAGEMENT FEE"
+    if is_management_fee:
+        mapped["handling_fees"] = mapped.get("total_amount", 0.0)
+        mapped["paid_to_supplier"] = 0.0
+    else:
+        mapped["paid_to_supplier"] = gross_amount - hidden_commission
+        mapped.setdefault("handling_fees", mapped.get("s_fee", 0.0))
 
     # In this export format, "Airline Code" actually holds the vendor
     # name for non-flight services too (hotel, restaurant, etc.) — the
