@@ -24,6 +24,11 @@ import streamlit as st
 
 from column_mapping import COLUMN_MAPPING, NUMERIC_COLUMNS, DATE_COLUMNS
 
+# Case-insensitive lookup: source files aren't always consistent about
+# capitalization (e.g. "Airline code" vs "Airline Code"), so match on a
+# lowercased key instead of requiring an exact-case match.
+_COLUMN_MAPPING_CI = {k.strip().lower(): v for k, v in COLUMN_MAPPING.items()}
+
 
 def _clean_numeric(value):
     """Turn '7,017.54' / '' / NaN into a float (0.0 if empty/unparseable)."""
@@ -61,7 +66,7 @@ def _map_row(row: dict) -> dict:
     mapped = {}
     for source_col, value in row.items():
         source_col_clean = str(source_col).strip()
-        db_col = COLUMN_MAPPING.get(source_col_clean)
+        db_col = _COLUMN_MAPPING_CI.get(source_col_clean.lower())
         if not db_col:
             continue  # unmapped column — ignored (add it to COLUMN_MAPPING to include)
         if db_col in NUMERIC_COLUMNS:
@@ -122,8 +127,8 @@ def show_import(get_cursor):
 
     # Show which columns matched vs were ignored
     file_columns = [str(c).strip() for c in df.columns]
-    matched = [c for c in file_columns if c in COLUMN_MAPPING]
-    unmatched = [c for c in file_columns if c not in COLUMN_MAPPING]
+    matched = [c for c in file_columns if c.lower() in _COLUMN_MAPPING_CI]
+    unmatched = [c for c in file_columns if c.lower() not in _COLUMN_MAPPING_CI]
 
     col1, col2 = st.columns(2)
     with col1:
