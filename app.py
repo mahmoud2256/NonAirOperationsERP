@@ -729,173 +729,190 @@ def generate_invoice_pdf(data):
     return buffer
 
 def generate_customer_invoice_pdf(data):
-    """Professional customer-facing invoice PDF — includes the company
-    logo, a proper invoice header, and a polished financial summary.
-    Does NOT show supplier-side amounts (Paid To Supplier, Hidden
-    Commission), only what the customer is actually billed."""
+    """Customer-facing invoice PDF styled like a formal commercial tax
+    invoice (Issuer/Receiver blocks, itemized VAT table, bank details
+    footer) — matching the reference invoice format provided.
+
+    COMPANY_INFO below holds placeholder legal/company details (CR No,
+    VAT No, address, bank accounts). Edit these once with your real
+    company details — they are the same on every invoice."""
+
+    COMPANY_INFO = {
+        "name": "Bright Star — Non-Air Operations",
+        "address_line1": "ElSheikh Ali Gad Elhak, 3rd Floor west side, Cairo, Egypt",
+        "building_no": "",
+        "country": "Egypt",
+        "city": "Cairo",
+        "postal_code": "",
+        "cr_no": "",
+        "vat_no": "",
+        "bank_name": "",
+        "swift_code": "",
+        "account_egp": "",
+        "iban_egp": "",
+        "account_usd": "",
+        "iban_usd": "",
+    }
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=1.5*cm,
-        leftMargin=1.5*cm,
-        topMargin=1.2*cm,
-        bottomMargin=1.5*cm
+        buffer, pagesize=A4,
+        rightMargin=1.3*cm, leftMargin=1.3*cm,
+        topMargin=1.2*cm, bottomMargin=1.2*cm
     )
 
     styles = getSampleStyleSheet()
     elements = []
 
     NAVY = colors.HexColor('#1A3A5C')
-    LIGHT_BLUE = colors.HexColor('#EFF6FF')
-    GOLD = colors.HexColor('#FCD34D')
     GREY_TEXT = colors.HexColor('#6B7280')
+    BORDER = colors.HexColor('#B0B8C1')
     ROW_ALT = colors.HexColor('#F8FAFC')
-    BORDER = colors.HexColor('#E0E4EA')
 
-    company_name_style = ParagraphStyle(
-        'CompanyName', parent=styles['Normal'], fontSize=16,
-        textColor=colors.white, fontName='Helvetica-Bold', leading=19
-    )
-    company_tagline_style = ParagraphStyle(
-        'CompanyTagline', parent=styles['Normal'], fontSize=9,
-        textColor=colors.HexColor('#93C5FD'), fontName='Helvetica', leading=12
-    )
-    invoice_label_style = ParagraphStyle(
-        'InvoiceLabel', parent=styles['Normal'], fontSize=20,
-        textColor=colors.white, fontName='Helvetica-Bold', alignment=2, leading=24
-    )
-    invoice_no_style = ParagraphStyle(
-        'InvoiceNo', parent=styles['Normal'], fontSize=10,
-        textColor=colors.HexColor('#93C5FD'), fontName='Helvetica', alignment=2
-    )
-
-    # ── HEADER BAND: logo + company name on the left, "INVOICE" + no. on the right ──
-    try:
-        logo_cell = Image("logo.png", width=2.6*cm, height=2.6*cm)
-    except Exception:
-        logo_cell = Paragraph("", styles['Normal'])
-
-    company_block = [
-        Paragraph("BRIGHT STAR", company_name_style),
-        Paragraph("Non-Air Operations ERP", company_tagline_style),
-    ]
-    invoice_block = [
-        Paragraph("CUSTOMER INVOICE", invoice_label_style),
-        Paragraph(f"No. {data.get('invoice_no', '')}", invoice_no_style),
-    ]
-
-    header_table = Table(
-        [[logo_cell, company_block, invoice_block]],
-        colWidths=[3*cm, 8*cm, 6*cm]
-    )
-    header_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), NAVY),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (0, 0), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
-        ('RIGHTPADDING', (2, 0), (2, 0), 12),
-    ]))
-    elements.append(header_table)
-    elements.append(Spacer(1, 0.15*cm))
-    accent = Table([[""]], colWidths=[17*cm], rowHeights=[0.1*cm])
-    accent.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), GOLD)]))
-    elements.append(accent)
-    elements.append(Spacer(1, 0.6*cm))
-
-    # ── INVOICE DETAILS: two columns side by side ──
+    title_style = ParagraphStyle('InvTitle', parent=styles['Normal'], fontSize=20,
+                                  textColor=NAVY, fontName='Helvetica-Bold', spaceAfter=10)
     label_style = ParagraphStyle('Lbl', parent=styles['Normal'], fontSize=8,
                                   textColor=GREY_TEXT, fontName='Helvetica-Bold')
-    value_style = ParagraphStyle('Val', parent=styles['Normal'], fontSize=10,
-                                  textColor=colors.HexColor('#1A1A2E'), fontName='Helvetica-Bold')
+    value_style = ParagraphStyle('Val', parent=styles['Normal'], fontSize=9,
+                                  textColor=colors.HexColor('#1A1A2E'), fontName='Helvetica')
+    header_col_style = ParagraphStyle('HeaderCol', parent=styles['Normal'], fontSize=10,
+                                       textColor=NAVY, fontName='Helvetica-Bold')
 
-    def field(label, value):
-        return [Paragraph(label.upper(), label_style), Paragraph(str(value) if value else "-", value_style)]
+    elements.append(Paragraph("Invoice", title_style))
 
-    left_col = Table([
-        field("Billed To", data.get("accounts", "")),
-        field("Date", data.get("date", "")),
-        field("Date of Service", data.get("service_date", "")),
-    ], colWidths=[8.5*cm])
-    left_col.setStyle(TableStyle([('BOTTOMPADDING', (0, 0), (-1, -1), 8)]))
+    # ── Invoice No / Date / Sales Person row ──
+    meta_table = Table([
+        [Paragraph("INVOICE NO", label_style), Paragraph("ISSUE DATE", label_style),
+         Paragraph("SALES PERSON", label_style)],
+        [Paragraph(str(data.get("invoice_no", "")), value_style),
+         Paragraph(str(data.get("date", "")), value_style),
+         Paragraph(str(data.get("owner", "")), value_style)],
+    ], colWidths=[5.7*cm, 5.7*cm, 5.7*cm])
+    meta_table.setStyle(TableStyle([
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 10),
+    ]))
+    elements.append(meta_table)
 
-    right_col = Table([
-        field("Subject", data.get("subject", "")),
-        field("Type of Service", data.get("service_type", "")),
-        field("City", data.get("supplier_city", "")),
-    ], colWidths=[8.5*cm])
-    right_col.setStyle(TableStyle([('BOTTOMPADDING', (0, 0), (-1, -1), 8)]))
-
-    details_table = Table([[left_col, right_col]], colWidths=[8.5*cm, 8.5*cm])
-    details_table.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP')]))
-    elements.append(details_table)
+    # ── Issuer (From) / Receiver (To) ──
+    issuer_lines = [
+        Paragraph("ISSUER (FROM)", header_col_style),
+        Paragraph(f"<b>Name:</b> {COMPANY_INFO['name']}", value_style),
+        Paragraph(f"<b>Address:</b> {COMPANY_INFO['address_line1']}", value_style),
+        Paragraph(f"<b>Country:</b> {COMPANY_INFO['country']}  <b>City:</b> {COMPANY_INFO['city']}", value_style),
+        Paragraph(f"<b>CR No.:</b> {COMPANY_INFO['cr_no'] or '-'}", value_style),
+        Paragraph(f"<b>VAT No.:</b> {COMPANY_INFO['vat_no'] or '-'}", value_style),
+    ]
+    receiver_lines = [
+        Paragraph("RECEIVER (TO)", header_col_style),
+        Paragraph(f"<b>Name:</b> {data.get('accounts', '')}", value_style),
+        Paragraph(f"<b>City:</b> {data.get('supplier_city', '') or '-'}", value_style),
+        Paragraph(f"<b>Subject:</b> {data.get('subject', '') or '-'}", value_style),
+        Paragraph(f"<b>Type of Service:</b> {data.get('service_type', '') or '-'}", value_style),
+        Paragraph(f"<b>No. of PAX:</b> {data.get('no_of_pax', '')}", value_style),
+    ]
+    parties_table = Table([[issuer_lines, receiver_lines]], colWidths=[8.5*cm, 8.5*cm])
+    parties_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('LINEABOVE', (0, 0), (-1, 0), 1, BORDER),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, BORDER),
+    ]))
+    elements.append(parties_table)
     elements.append(Spacer(1, 0.5*cm))
 
-    # ── FINANCIAL SUMMARY ──
-    # VAT on Purchase (vendor-side VAT) is included here and folded into
-    # the total, per instruction — it's billed through to the customer.
-    fin_rows = [
-        ["DESCRIPTION", "AMOUNT"],
-        ["Service Amount", f"{data.get('gross_amount', 0):,.2f} {data.get('currency', 'EGP')}"],
-        ["Handling Fees", f"{data.get('handling_fees', 0):,.2f} {data.get('currency', 'EGP')}"],
-        ["VAT (14%)", f"{data.get('vat', 0):,.2f} {data.get('currency', 'EGP')}"],
-    ]
-    if data.get("vendor_vat"):
-        fin_rows.append(["VAT on Purchase (14%)", f"{data.get('vendor_vat', 0):,.2f} {data.get('currency', 'EGP')}"])
-    fin_rows.append(["TOTAL AMOUNT DUE", f"{data.get('total_amount', 0):,.2f} {data.get('currency', 'EGP')}"])
+    # ── Line items table: Description / Qty / Unit Price / Amount / VAT / Subtotal (incl. VAT) ──
+    currency = data.get("currency", "EGP")
+    gross = float(data.get("gross_amount", 0) or 0)
+    handling = float(data.get("handling_fees", 0) or 0)
+    cust_vat = float(data.get("vat", 0) or 0)
+    vendor_vat = float(data.get("vendor_vat", 0) or 0)
 
-    last_row = len(fin_rows) - 1
-    fin_table = Table(fin_rows, colWidths=[11*cm, 6*cm])
-    fin_table.setStyle(TableStyle([
+    item_rows = [["#", "DESCRIPTION", "QTY", "UNIT PRICE", "AMOUNT", "VAT", "SUBTOTAL (INCL. VAT)"]]
+    item_no = 1
+    if gross:
+        item_rows.append([
+            str(item_no), f"Service Amount — {data.get('service_type', '') or 'Service'}", "1",
+            f"{gross:,.2f}", f"{gross:,.2f}", f"{vendor_vat:,.2f}", f"{gross + vendor_vat:,.2f}"
+        ])
+        item_no += 1
+    if handling:
+        item_rows.append([
+            str(item_no), "Handling Fees", "1",
+            f"{handling:,.2f}", f"{handling:,.2f}", f"{cust_vat:,.2f}", f"{handling + cust_vat:,.2f}"
+        ])
+        item_no += 1
+
+    items_table = Table(item_rows, colWidths=[0.8*cm, 5.8*cm, 1.2*cm, 2.6*cm, 2.4*cm, 2.1*cm, 2.1*cm])
+    items_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), NAVY),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('BACKGROUND', (0, last_row), (-1, last_row), LIGHT_BLUE),
-        ('FONTNAME', (0, last_row), (-1, last_row), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, last_row), (-1, last_row), 13),
-        ('TEXTCOLOR', (0, last_row), (-1, last_row), NAVY),
-        ('TOPPADDING', (0, last_row), (-1, last_row), 12),
-        ('BOTTOMPADDING', (0, last_row), (-1, last_row), 12),
-        ('LINEABOVE', (0, last_row), (-1, last_row), 1.5, NAVY),
-        ('FONTNAME', (0, 1), (0, last_row - 1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, last_row - 1), 10),
-        ('ROWBACKGROUNDS', (0, 1), (-1, last_row - 1), [ROW_ALT, colors.white]),
-        ('GRID', (0, 0), (-1, last_row - 1), 0.5, BORDER),
+        ('FONTSIZE', (0, 0), (-1, 0), 7.5),
+        ('FONTSIZE', (0, 1), (-1, -1), 8.5),
+        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ROW_ALT]),
+        ('GRID', (0, 0), (-1, -1), 0.4, BORDER),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, last_row - 1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, last_row - 1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
-    elements.append(fin_table)
-    elements.append(Spacer(1, 1*cm))
+    elements.append(items_table)
+    elements.append(Spacer(1, 0.5*cm))
 
-    # ── FOOTER ──
-    thanks_style = ParagraphStyle(
-        'Thanks', parent=styles['Normal'], fontSize=10,
-        textColor=NAVY, fontName='Helvetica-Bold', spaceAfter=4
-    )
-    footer_style = ParagraphStyle(
-        'Footer', parent=styles['Normal'], fontSize=8,
-        textColor=GREY_TEXT, fontName='Helvetica'
-    )
-    elements.append(Paragraph("Thank you for your business.", thanks_style))
+    # ── Total amounts summary ──
+    total_taxable = gross + handling
+    total_vat = cust_vat + vendor_vat
+    total_due = float(data.get("total_amount", 0) or 0)
+
+    totals_table = Table([
+        ["Total Taxable Amount (Excluding VAT)", f"{currency}  {total_taxable:,.2f}"],
+        ["Total VAT", f"{currency}  {total_vat:,.2f}"],
+        ["Total Amount Due", f"{currency}  {total_due:,.2f}"],
+    ], colWidths=[12*cm, 5*cm])
+    totals_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, 1), 9),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 2), (-1, 2), 11),
+        ('TEXTCOLOR', (0, 2), (-1, 2), NAVY),
+        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#EFF6FF')),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('LINEABOVE', (0, 2), (-1, 2), 1, NAVY),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 2), (-1, 2), 8),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 8),
+    ]))
+    elements.append(totals_table)
+    elements.append(Spacer(1, 0.7*cm))
+
+    # ── Bank details footer ──
+    bank_style = ParagraphStyle('Bank', parent=styles['Normal'], fontSize=8,
+                                 textColor=GREY_TEXT, fontName='Helvetica', leading=12)
+    bank_lines = [f"Account Name: {COMPANY_INFO['name']}"]
+    if COMPANY_INFO['bank_name']:
+        bank_lines.append(f"Bank Name: {COMPANY_INFO['bank_name']}  •  Swift Code: {COMPANY_INFO['swift_code']}")
+    if COMPANY_INFO['account_egp']:
+        bank_lines.append(f"EGP Account: {COMPANY_INFO['account_egp']}  •  IBAN: {COMPANY_INFO['iban_egp']}")
+    if COMPANY_INFO['account_usd']:
+        bank_lines.append(f"USD Account: {COMPANY_INFO['account_usd']}  •  IBAN: {COMPANY_INFO['iban_usd']}")
+    for line in bank_lines:
+        elements.append(Paragraph(line, bank_style))
+
+    elements.append(Spacer(1, 0.3*cm))
     elements.append(Paragraph(
-        "Bright Star — Non-Air Operations  •  Bright.Star@moonstone.com",
-        footer_style
-    ))
-    elements.append(Paragraph(
-        f"Generated by Non-Air Operations ERP  •  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        footer_style
+        f"Generated by Non-Air Operations ERP  •  {datetime.now().strftime('%Y-%m-%d %H:%M')}  •  E&OE",
+        bank_style
     ))
 
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
 
 def show_dashboard():
 
