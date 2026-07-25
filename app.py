@@ -1618,8 +1618,18 @@ def show_admin():
 # MAIN APP
 # =========================================================
 
-try:
+@st.cache_resource
+def _init_database():
+    """Runs create_tables() only ONCE per server process instead of on
+    every button click / page navigation. Streamlit reruns the whole
+    script top-to-bottom on every interaction, so without this cache,
+    every single click was sending ~15 CREATE/ALTER statements to
+    Supabase before the page even rendered — a major source of lag."""
     create_tables()
+    return True
+
+try:
+    _init_database()
 except Exception as e:
     st.error(f"Database connection error: {e}")
     st.info("Please check your database password in the code")
