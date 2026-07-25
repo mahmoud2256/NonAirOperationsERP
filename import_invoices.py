@@ -86,12 +86,16 @@ def _map_row(row: dict) -> dict:
     #   handling_fees     = S.FEE (the service fee charged to the customer)
     gross_amount = mapped.get("gross_amount", 0.0)
     hidden_commission = mapped.get("hidden_commission", 0.0)
-    # Special case: "MANAGEMENT FEE" rows are a direct fee charged to
-    # the client with no underlying vendor purchase. Their S.FEE is
-    # often 0 and the real fee amount sits in TOTAL instead — so for
-    # these rows, treat the full TOTAL as the profit-bearing handling
-    # fee, and there's no supplier cost to pay out.
-    is_management_fee = str(mapped.get("airline_code", "")).strip().upper() == "MANAGEMENT FEE"
+    # Special case: any "Management Fee" line (text varies — "MANAGEMENT
+    # FEE", "Management Fee With VAT", etc. — and can appear in either
+    # the Airline Code or the Service Type column) is a direct fee
+    # charged to the client with no underlying vendor purchase. Its
+    # S.FEE is often 0 and the real fee amount sits in TOTAL instead —
+    # so for these rows, treat the full TOTAL as the profit-bearing
+    # handling fee, and there's no supplier cost to pay out.
+    airline_code_text = str(mapped.get("airline_code", "")).strip().upper()
+    service_type_text = str(mapped.get("service_type", "")).strip().upper()
+    is_management_fee = "MANAGEMENT FEE" in airline_code_text or "MANAGEMENT FEE" in service_type_text
     if is_management_fee:
         mapped["handling_fees"] = mapped.get("total_amount", 0.0)
         mapped["paid_to_supplier"] = 0.0
