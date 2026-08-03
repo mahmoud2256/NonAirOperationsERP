@@ -5,12 +5,10 @@ from datetime import date, datetime
 import io
 import urllib.parse
 
-from import_invoices import show_import
-
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     REPORTLAB_AVAILABLE = True
@@ -160,24 +158,6 @@ def create_tables():
 # STATIC DATA
 # =========================================================
 
-WORLD_COUNTRIES = [
-    "Egypt", "Saudi Arabia", "United Arab Emirates", "Kuwait", "Qatar",
-    "Bahrain", "Oman", "Jordan", "Lebanon", "Iraq", "Libya", "Tunisia",
-    "Morocco", "Algeria", "Sudan", "Yemen", "Palestine", "Syria",
-    "Turkey", "Cyprus", "Greece", "Italy", "Spain", "Portugal", "France",
-    "Germany", "United Kingdom", "Ireland", "Netherlands", "Belgium",
-    "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland",
-    "Poland", "Czech Republic", "Hungary", "Romania", "Bulgaria",
-    "Croatia", "Serbia", "Ukraine", "Russia", "United States", "Canada",
-    "Mexico", "Brazil", "Argentina", "Chile", "Colombia", "Peru",
-    "China", "Japan", "South Korea", "India", "Pakistan", "Bangladesh",
-    "Sri Lanka", "Nepal", "Thailand", "Vietnam", "Malaysia", "Singapore",
-    "Indonesia", "Philippines", "Hong Kong", "Taiwan", "Australia",
-    "New Zealand", "South Africa", "Kenya", "Nigeria", "Ethiopia",
-    "Ghana", "Tanzania", "Uganda", "Georgia", "Armenia", "Azerbaijan",
-    "Kazakhstan", "Uzbekistan", "Iran", "Israel", "Maldives", "Other",
-]
-
 EGYPT_GOVERNORATES = [
     "Cairo", "Giza", "Alexandria", "Qalyubia", "Port Said",
     "Suez", "Damietta", "Dakahlia", "Sharqia", "Gharbia",
@@ -194,15 +174,6 @@ SERVICE_TYPES = [
     "Conference / MICE", "Other"
 ]
 
-CURRENCIES = [
-    "EGP", "USD", "EUR", "GBP", "SAR", "AED", "KWD", "QAR", "BHD", "OMR",
-    "JOD", "LBP", "IQD", "LYD", "TND", "MAD", "DZD", "SDG", "YER",
-    "CHF", "JPY", "CNY", "INR", "TRY", "RUB", "CAD", "AUD", "NZD",
-    "SGD", "HKD", "THB", "MYR", "IDR", "PHP", "VND", "KRW", "ZAR",
-    "NGN", "KES", "GHS", "ETB", "BRL", "MXN", "ARS", "SEK", "NOK",
-    "DKK", "PLN", "CZK", "HUF", "RON", "ILS", "PKR", "BDT", "LKR",
-]
-
 VAT_RATE = 0.14
 
 def get_handling_rate(account_name):
@@ -217,19 +188,8 @@ def get_handling_rate(account_name):
 # LOAD EXCEL FILES
 # =========================================================
 
-import os
-
-def _file_version(path):
-    """Returns the file's last-modified time, used as a cache-busting key
-    so Streamlit reloads the Excel file automatically whenever it changes
-    (no manual 'Reboot app' needed anymore)."""
-    try:
-        return os.path.getmtime(path)
-    except OSError:
-        return 0
-
 @st.cache_data
-def load_vendors(_version=None):
+def load_vendors():
     try:
         df = pd.read_excel("vendors.xlsx").fillna("")
         if "City" not in df.columns:
@@ -239,7 +199,7 @@ def load_vendors(_version=None):
         return pd.DataFrame(columns=["Alias", "City"])
 
 @st.cache_data
-def load_issuers(_version=None):
+def load_issuers():
     try:
         df = pd.read_excel("issuers.xlsx").fillna("")
         return df["Issuer"].tolist()
@@ -247,7 +207,7 @@ def load_issuers(_version=None):
         return []
 
 @st.cache_data
-def load_accounts(_version=None):
+def load_accounts():
     try:
         df = pd.read_excel("accounts.xlsx").fillna("")
         return [str(x) for x in df["Accounts"].tolist() if str(x).strip() != ""]
@@ -728,208 +688,20 @@ def generate_invoice_pdf(data):
     buffer.seek(0)
     return buffer
 
-def generate_customer_invoice_pdf(data):
-    """Customer-facing invoice PDF styled like a formal commercial tax
-    invoice (Issuer/Receiver blocks, itemized VAT table, bank details
-    footer) — matching the reference invoice format provided.
-
-    COMPANY_INFO below holds placeholder legal/company details (CR No,
-    VAT No, address, bank accounts). Edit these once with your real
-    company details — they are the same on every invoice."""
-
-    COMPANY_INFO = {
-        "name": "Bright Star — Non-Air Operations",
-        "address_line1": "ElSheikh Ali Gad Elhak, 3rd Floor west side, Cairo, Egypt",
-        "building_no": "",
-        "country": "Egypt",
-        "city": "Cairo",
-        "postal_code": "",
-        "cr_no": "",
-        "vat_no": "",
-        "bank_name": "",
-        "swift_code": "",
-        "account_egp": "",
-        "iban_egp": "",
-        "account_usd": "",
-        "iban_usd": "",
-    }
-
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=1.3*cm, leftMargin=1.3*cm,
-        topMargin=1.2*cm, bottomMargin=1.2*cm
-    )
-
-    styles = getSampleStyleSheet()
-    elements = []
-
-    NAVY = colors.HexColor('#1A3A5C')
-    GREY_TEXT = colors.HexColor('#6B7280')
-    BORDER = colors.HexColor('#B0B8C1')
-    ROW_ALT = colors.HexColor('#F8FAFC')
-
-    title_style = ParagraphStyle('InvTitle', parent=styles['Normal'], fontSize=20,
-                                  textColor=NAVY, fontName='Helvetica-Bold', spaceAfter=10)
-    label_style = ParagraphStyle('Lbl', parent=styles['Normal'], fontSize=8,
-                                  textColor=GREY_TEXT, fontName='Helvetica-Bold')
-    value_style = ParagraphStyle('Val', parent=styles['Normal'], fontSize=9,
-                                  textColor=colors.HexColor('#1A1A2E'), fontName='Helvetica')
-    header_col_style = ParagraphStyle('HeaderCol', parent=styles['Normal'], fontSize=10,
-                                       textColor=NAVY, fontName='Helvetica-Bold')
-
-    elements.append(Paragraph("Invoice", title_style))
-
-    # ── Invoice No / Date / Sales Person row ──
-    meta_table = Table([
-        [Paragraph("INVOICE NO", label_style), Paragraph("ISSUE DATE", label_style),
-         Paragraph("SALES PERSON", label_style)],
-        [Paragraph(str(data.get("invoice_no", "")), value_style),
-         Paragraph(str(data.get("date", "")), value_style),
-         Paragraph(str(data.get("owner", "")), value_style)],
-    ], colWidths=[5.7*cm, 5.7*cm, 5.7*cm])
-    meta_table.setStyle(TableStyle([
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
-        ('BOTTOMPADDING', (0, 1), (-1, 1), 10),
-    ]))
-    elements.append(meta_table)
-
-    # ── Issuer (From) / Receiver (To) ──
-    issuer_lines = [
-        Paragraph("ISSUER (FROM)", header_col_style),
-        Paragraph(f"<b>Name:</b> {COMPANY_INFO['name']}", value_style),
-        Paragraph(f"<b>Address:</b> {COMPANY_INFO['address_line1']}", value_style),
-        Paragraph(f"<b>Country:</b> {COMPANY_INFO['country']}  <b>City:</b> {COMPANY_INFO['city']}", value_style),
-        Paragraph(f"<b>CR No.:</b> {COMPANY_INFO['cr_no'] or '-'}", value_style),
-        Paragraph(f"<b>VAT No.:</b> {COMPANY_INFO['vat_no'] or '-'}", value_style),
-    ]
-    receiver_lines = [
-        Paragraph("RECEIVER (TO)", header_col_style),
-        Paragraph(f"<b>Name:</b> {data.get('accounts', '')}", value_style),
-        Paragraph(f"<b>City:</b> {data.get('supplier_city', '') or '-'}", value_style),
-        Paragraph(f"<b>Subject:</b> {data.get('subject', '') or '-'}", value_style),
-        Paragraph(f"<b>Type of Service:</b> {data.get('service_type', '') or '-'}", value_style),
-        Paragraph(f"<b>No. of PAX:</b> {data.get('no_of_pax', '')}", value_style),
-    ]
-    parties_table = Table([[issuer_lines, receiver_lines]], colWidths=[8.5*cm, 8.5*cm])
-    parties_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('LINEABOVE', (0, 0), (-1, 0), 1, BORDER),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, BORDER),
-    ]))
-    elements.append(parties_table)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # ── Line items table: Description / Qty / Unit Price / Amount / VAT / Subtotal (incl. VAT) ──
-    currency = data.get("currency", "EGP")
-    gross = float(data.get("gross_amount", 0) or 0)
-    handling = float(data.get("handling_fees", 0) or 0)
-    cust_vat = float(data.get("vat", 0) or 0)
-    vendor_vat = float(data.get("vendor_vat", 0) or 0)
-
-    item_rows = [["#", "DESCRIPTION", "QTY", "UNIT PRICE", "AMOUNT", "VAT", "SUBTOTAL (INCL. VAT)"]]
-    item_no = 1
-    if gross:
-        item_rows.append([
-            str(item_no), f"Service Amount — {data.get('service_type', '') or 'Service'}", "1",
-            f"{gross:,.2f}", f"{gross:,.2f}", f"{vendor_vat:,.2f}", f"{gross + vendor_vat:,.2f}"
-        ])
-        item_no += 1
-    if handling:
-        item_rows.append([
-            str(item_no), "Handling Fees", "1",
-            f"{handling:,.2f}", f"{handling:,.2f}", f"{cust_vat:,.2f}", f"{handling + cust_vat:,.2f}"
-        ])
-        item_no += 1
-
-    items_table = Table(item_rows, colWidths=[0.8*cm, 5.8*cm, 1.2*cm, 2.6*cm, 2.4*cm, 2.1*cm, 2.1*cm])
-    items_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), NAVY),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7.5),
-        ('FONTSIZE', (0, 1), (-1, -1), 8.5),
-        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ROW_ALT]),
-        ('GRID', (0, 0), (-1, -1), 0.4, BORDER),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-    ]))
-    elements.append(items_table)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # ── Total amounts summary ──
-    total_taxable = gross + handling
-    total_vat = cust_vat + vendor_vat
-    total_due = float(data.get("total_amount", 0) or 0)
-
-    totals_table = Table([
-        ["Total Taxable Amount (Excluding VAT)", f"{currency}  {total_taxable:,.2f}"],
-        ["Total VAT", f"{currency}  {total_vat:,.2f}"],
-        ["Total Amount Due", f"{currency}  {total_due:,.2f}"],
-    ], colWidths=[12*cm, 5*cm])
-    totals_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 1), 9),
-        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 2), (-1, 2), 11),
-        ('TEXTCOLOR', (0, 2), (-1, 2), NAVY),
-        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#EFF6FF')),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('LINEABOVE', (0, 2), (-1, 2), 1, NAVY),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('TOPPADDING', (0, 2), (-1, 2), 8),
-        ('BOTTOMPADDING', (0, 2), (-1, 2), 8),
-    ]))
-    elements.append(totals_table)
-    elements.append(Spacer(1, 0.7*cm))
-
-    # ── Bank details footer ──
-    bank_style = ParagraphStyle('Bank', parent=styles['Normal'], fontSize=8,
-                                 textColor=GREY_TEXT, fontName='Helvetica', leading=12)
-    bank_lines = [f"Account Name: {COMPANY_INFO['name']}"]
-    if COMPANY_INFO['bank_name']:
-        bank_lines.append(f"Bank Name: {COMPANY_INFO['bank_name']}  •  Swift Code: {COMPANY_INFO['swift_code']}")
-    if COMPANY_INFO['account_egp']:
-        bank_lines.append(f"EGP Account: {COMPANY_INFO['account_egp']}  •  IBAN: {COMPANY_INFO['iban_egp']}")
-    if COMPANY_INFO['account_usd']:
-        bank_lines.append(f"USD Account: {COMPANY_INFO['account_usd']}  •  IBAN: {COMPANY_INFO['iban_usd']}")
-    for line in bank_lines:
-        elements.append(Paragraph(line, bank_style))
-
-    elements.append(Spacer(1, 0.3*cm))
-    elements.append(Paragraph(
-        f"Generated by Non-Air Operations ERP  •  {datetime.now().strftime('%Y-%m-%d %H:%M')}  •  E&OE",
-        bank_style
-    ))
-
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-
 def show_dashboard():
 
     st.markdown("# Operations Dashboard")
 
     cur = get_cursor()
     cur.execute("""
-    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0),
-           COALESCE(SUM(handling_fees),0), COALESCE(SUM(hidden_commission),0)
+    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
     FROM invoices
     """)
-    count, total_sales, total_revenue, total_handling, total_hidden = cur.fetchone()
-    total_profit_kpi = total_handling + total_hidden  # includes MANAGEMENT FEE rows via S.FEE -> handling_fees
+    count, total_sales, total_revenue = cur.fetchone()
 
     st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f"""
         <div class="metric-card" style="border-top:3px solid #22C55E;">
@@ -949,13 +721,6 @@ def show_dashboard():
         <div class="metric-card" style="border-top:3px solid #F59E0B;">
             <p class="metric-number" style="color:#B45309;">{count}</p>
             <p class="metric-label">Invoices Count</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col4:
-        st.markdown(f"""
-        <div class="metric-card" style="border-top:3px solid #A855F7;">
-            <p class="metric-number" style="color:#7E22CE;">{total_profit_kpi:,.0f}</p>
-            <p class="metric-label">Total Profit</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1008,35 +773,17 @@ def show_dashboard():
 
     # Vendor Analysis
     st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
-    vendors_df = load_vendors(_file_version("vendors.xlsx"))
+    vendors_df = load_vendors()
     vendors = vendors_df["Alias"].tolist()
     selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
     if selected_vendor:
         cur3 = get_cursor()
-
-        # Optional: narrow down to one specific customer/account too
-        cur3.execute("SELECT DISTINCT accounts FROM invoices WHERE supplier = %s AND accounts IS NOT NULL ORDER BY accounts", (selected_vendor,))
-        vendor_accounts = [r[0] for r in cur3.fetchall()]
-        filter_account = st.selectbox(
-            "Filter by Customer (optional)",
-            ["All Customers"] + vendor_accounts,
-            key="vendor_account_filter"
-        )
-
-        if filter_account != "All Customers":
-            cur3.execute("""
-            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0),
-                   COALESCE(SUM(handling_fees),0), COALESCE(SUM(hidden_commission),0)
-            FROM invoices WHERE supplier = %s AND accounts = %s
-            """, (selected_vendor, filter_account))
-        else:
-            cur3.execute("""
-            SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0),
-                   COALESCE(SUM(handling_fees),0), COALESCE(SUM(hidden_commission),0)
-            FROM invoices WHERE supplier = %s
-            """, (selected_vendor,))
-        v_count, v_purchased, v_handling, v_hidden = cur3.fetchone()
-        v_profit = v_handling + v_hidden  # excludes VAT — VAT is a pass-through tax, not profit
+        cur3.execute("""
+        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+        FROM invoices WHERE supplier = %s
+        """, (selected_vendor,))
+        v_count, v_purchased, v_total = cur3.fetchone()
+        v_profit = v_total - v_purchased
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #3B82F6;">
@@ -1051,21 +798,9 @@ def show_dashboard():
                 <p class="metric-number" style="color:#B45309;">{v_count}</p>
                 <p class="metric-label">Invoices With Vendor</p></div>""", unsafe_allow_html=True)
 
-        # Breakdown: how many invoices with this vendor, per customer
-        if filter_account == "All Customers" and len(vendor_accounts) > 1:
-            st.markdown("###### Breakdown by Customer")
-            cur3.execute("""
-            SELECT accounts, COUNT(*), COALESCE(SUM(total_amount),0)
-            FROM invoices WHERE supplier = %s AND accounts IS NOT NULL
-            GROUP BY accounts ORDER BY COUNT(*) DESC
-            """, (selected_vendor,))
-            breakdown_rows = cur3.fetchall()
-            breakdown_df = pd.DataFrame(breakdown_rows, columns=["Customer", "Invoices", "Total Amount"])
-            st.dataframe(breakdown_df, use_container_width=True, height=200)
-
     # Customer Analysis
     st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
-    accounts = load_accounts(_file_version("accounts.xlsx"))
+    accounts = load_accounts()
     selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
     if selected_account:
         cur4 = get_cursor()
@@ -1073,12 +808,11 @@ def show_dashboard():
         SELECT COUNT(*), COALESCE(SUM(total_amount),0),
                COALESCE(SUM(paid_to_supplier),0),
                COALESCE(SUM(handling_fees),0),
-               COALESCE(SUM(vat),0),
-               COALESCE(SUM(hidden_commission),0)
+               COALESCE(SUM(vat),0)
         FROM invoices WHERE accounts = %s
         """, (selected_account,))
-        c_count, c_total, c_paid, c_handling, c_vat, c_hidden = cur4.fetchone()
-        c_profit = c_handling + c_hidden  # excludes VAT — VAT is a pass-through tax, not profit
+        c_count, c_total, c_paid, c_handling, c_vat = cur4.fetchone()
+        c_profit = c_handling + c_vat
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""<div class="metric-card" style="border-top:3px solid #1A3A5C;">
@@ -1202,7 +936,7 @@ def show_treasury():
                     "Receipt", "Transfer"
                 ], key="t_type")
             with c3:
-                t_currency = st.selectbox("Currency", CURRENCIES, key="t_currency")
+                t_currency = st.selectbox("Currency", ["EGP", "USD"], key="t_currency")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -1274,7 +1008,7 @@ def show_treasury():
         with c2:
             acc_type = st.selectbox("Type", ["Bank", "Cash"])
         with c3:
-            acc_currency = st.selectbox("Currency", CURRENCIES, key="acc_cur")
+            acc_currency = st.selectbox("Currency", ["EGP", "USD"], key="acc_cur")
         with c4:
             acc_opening = st.number_input("Opening Balance", min_value=0.0, step=0.01)
 
@@ -1308,16 +1042,183 @@ def show_treasury():
         else:
             st.info("No accounts yet.")
 
+    st.markdown("# Operations Dashboard")
+
+    cur = get_cursor()
+    cur.execute("""
+    SELECT COUNT(*), COALESCE(SUM(total_amount),0), COALESCE(SUM(paid_to_supplier),0)
+    FROM invoices
+    """)
+    count, total_sales, total_revenue = cur.fetchone()
+
+    st.markdown('<p class="section-label">Key Performance Indicators</p>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #22C55E;">
+            <p class="metric-number" style="color:#1A7A4A;">{total_sales:,.0f}</p>
+            <p class="metric-label">Total Sales</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+            <p class="metric-number" style="color:#1A3A5C;">{total_revenue:,.0f}</p>
+            <p class="metric-label">Total Revenue (Paid to Supplier)</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+            <p class="metric-number" style="color:#B45309;">{count}</p>
+            <p class="metric-label">Invoices Count</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Treasury quick view
+    cur.execute("""
+    SELECT a.name, a.type, a.currency, a.opening_balance,
+        COALESCE((
+            SELECT SUM(CASE
+                WHEN type IN ('Deposit','Receipt','Transfer_In') THEN amount
+                WHEN type IN ('Withdrawal','Payment','Transfer_Out') THEN -amount
+                ELSE 0 END)
+            FROM treasury_transactions t WHERE t.account_id = a.id
+        ), 0) as movements
+    FROM treasury_accounts a ORDER BY a.type, a.name
+    """)
+    treasury_accs = cur.fetchall()
+
+    if treasury_accs:
+        banks_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Bank"]
+        cash_data = [(a[0], a[2], a[3] + a[4]) for a in treasury_accs if a[1] == "Cash"]
+
+        if banks_data:
+            st.markdown('<p class="section-label">🏦 Bank Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(banks_data), 4))
+            for i, (name, currency, balance) in enumerate(banks_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #1A3A5C;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        if cash_data:
+            st.markdown('<p class="section-label">💰 Cash Balances</p>', unsafe_allow_html=True)
+            cols = st.columns(min(len(cash_data), 4))
+            for i, (name, currency, balance) in enumerate(cash_data):
+                color = "#1A7A4A" if balance >= 0 else "#EF4444"
+                with cols[i % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-top:3px solid #F59E0B;">
+                        <p style="font-size:12px;color:#6B7280;font-weight:700;margin:0;">{name}</p>
+                        <p style="font-size:20px;font-weight:800;color:{color};margin:6px 0 0 0;">{balance:,.2f}</p>
+                        <p style="font-size:11px;color:#94A3B8;margin:2px 0 0 0;">{currency}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    st.markdown('<p class="section-label">Vendor Analysis</p>', unsafe_allow_html=True)
+
+    vendors_df = load_vendors()
+    vendors = vendors_df["Alias"].tolist()
+
+    selected_vendor = st.selectbox("Select Vendor", [""] + vendors)
+
+    if selected_vendor:
+        cur.execute("""
+        SELECT COUNT(*), COALESCE(SUM(paid_to_supplier),0), COALESCE(SUM(total_amount),0)
+        FROM invoices WHERE supplier = %s
+        """, (selected_vendor,))
+        v_count, v_purchased, v_total = cur.fetchone()
+        v_profit = v_total - v_purchased
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{v_purchased:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{v_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{v_count}</p>
+                <p class="metric-label">Invoices With Vendor</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ── CUSTOMER ANALYSIS ──────────────────────────────────
+    st.markdown('<p class="section-label">Customer Analysis</p>', unsafe_allow_html=True)
+
+    accounts = load_accounts()
+
+    selected_account = st.selectbox("Select Customer (Account)", [""] + accounts)
+
+    if selected_account:
+        cur.execute("""
+        SELECT COUNT(*),
+               COALESCE(SUM(total_amount),0),
+               COALESCE(SUM(paid_to_supplier),0),
+               COALESCE(SUM(handling_fees),0),
+               COALESCE(SUM(vat),0)
+        FROM invoices WHERE accounts = %s
+        """, (selected_account,))
+        c_count, c_total, c_paid, c_handling, c_vat = cur.fetchone()
+        c_profit = c_handling + c_vat
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #1A3A5C;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_count}</p>
+                <p class="metric-label">Invoices Count</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #22C55E;">
+                <p class="metric-number" style="color:#1A7A4A;">{c_total:,.0f}</p>
+                <p class="metric-label">Total Amount</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #3B82F6;">
+                <p class="metric-number" style="color:#1A3A5C;">{c_paid:,.0f}</p>
+                <p class="metric-label">Paid To Supplier</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card" style="border-top: 3px solid #F59E0B;">
+                <p class="metric-number" style="color:#B45309;">{c_profit:,.0f}</p>
+                <p class="metric-label">Profit (Handling + VAT)</p>
+            </div>
+            """, unsafe_allow_html=True)
+
 # =========================================================
 # INVOICES PAGE
 # =========================================================
 
 def show_invoices():
 
-    vendors_df = load_vendors(_file_version("vendors.xlsx"))
+    vendors_df = load_vendors()
     vendors = vendors_df["Alias"].tolist()
-    issuers = load_issuers(_file_version("issuers.xlsx"))
-    accounts = load_accounts(_file_version("accounts.xlsx"))
+    issuers = load_issuers()
+    accounts = load_accounts()
 
     st.markdown("""
     <div style="background:#1A3A5C; padding:16px 24px; border-radius:6px; margin-bottom:24px;">
@@ -1384,11 +1285,13 @@ def show_invoices():
     with c1:
         traveller_name = st.text_input("Traveller Name")
     with c2:
-        origin_city = st.selectbox("Origin Country", [""] + WORLD_COUNTRIES, key="origin_city_select")
+        origin_city = st.text_input("Origin City")
     with c3:
-        destination_city = st.selectbox("Destination Country", [""] + WORLD_COUNTRIES, key="destination_city_select")
+        destination_city = st.text_input("Destination City")
     with c4:
-        city = st.text_input("City / Governorate", value=vendor_city or "")
+        city = st.selectbox("City", [""] + EGYPT_GOVERNORATES,
+                           index=(EGYPT_GOVERNORATES.index(vendor_city) + 1)
+                           if vendor_city in EGYPT_GOVERNORATES else 0)
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -1409,7 +1312,7 @@ def show_invoices():
     with c2:
         hidden_commission = st.number_input("Hidden Commission (SUP Commission)", min_value=0.0, step=0.01, key="hidden")
     with c3:
-        currency = st.selectbox("Currency", CURRENCIES)
+        currency = st.selectbox("Currency", ["EGP", "USD"])
     with c4:
         paid_to_supplier = gross_amount - hidden_commission
         st.markdown(f"""
@@ -1420,21 +1323,6 @@ def show_invoices():
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-    # VAT on the vendor/purchase side — only applicable if the supplier
-    # itself is VAT registered, calculated on the Gross Amount (Basic Fare)
-    if supplier_vat_registered:
-        vendor_vat = gross_amount * VAT_RATE
-        st.markdown(f"""
-        <div style="margin-top:12px; max-width: 320px;">
-            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT on Purchase (14% of Gross)</label>
-            <div style="background:#FFFBEB;border:2px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                <span style="font-size:20px;font-weight:800;color:#B45309;">{vendor_vat:,.2f}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        vendor_vat = 0.0
 
     st.markdown('<p style="font-size:11px;font-weight:700;color:#6B7280;letter-spacing:1.5px;text-transform:uppercase;border-bottom:1px solid #E0E4EA;padding-bottom:6px;margin:16px 0 12px 0;">Financial Details — Customer Side</p>', unsafe_allow_html=True)
 
@@ -1447,37 +1335,26 @@ def show_invoices():
             st.markdown(f"""
             <div style="margin-top:4px;">
                 <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Handling Fees ({rate*100:.1f}% of Gross)</label>
-                <div style="background:#DBEAFE;border:2px solid #3B82F6;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:20px;font-weight:800;color:#1A3A5C;">{handling_fees:,.2f}</span>
+                <div style="background:#EFF6FF;border:1px solid #93C5FD;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                    <span style="font-size:20px;font-weight:700;color:#1A3A5C;">{handling_fees:,.2f}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
         else:
             handling_fees = st.number_input("Handling Fees", min_value=0.0, step=0.01, key="handling")
     with c2:
-        if client_vat_registered:
-            vat = handling_fees * VAT_RATE
-            st.markdown(f"""
-            <div style="margin-top:4px;">
-                <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT (14% of Handling)</label>
-                <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:20px;font-weight:700;color:#B45309;">{vat:,.2f}</span>
-                </div>
+        vat = handling_fees * VAT_RATE
+        st.markdown(f"""
+        <div style="margin-top:4px;">
+            <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT (14% of Handling)</label>
+            <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:6px;padding:10px 14px;margin-top:8px;">
+                <span style="font-size:20px;font-weight:700;color:#B45309;">{vat:,.2f}</span>
             </div>
-            """, unsafe_allow_html=True)
-        else:
-            vat = 0.0
-            st.markdown(f"""
-            <div style="margin-top:4px;">
-                <label style="font-size:12px;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:1px;">VAT</label>
-                <div style="background:#F3F4F6;border:1px solid #D1D5DB;border-radius:6px;padding:10px 14px;margin-top:8px;">
-                    <span style="font-size:14px;font-weight:600;color:#6B7280;">Not applicable — client not VAT registered</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
 
     # ── TOTALS BAR ─────────────────────────────────────────
-    total_customer = gross_amount + handling_fees + vat + vendor_vat
+    total_customer = gross_amount + handling_fees + vat
     total_profit = hidden_commission + handling_fees
 
     st.markdown(f"""
@@ -1562,12 +1439,22 @@ def show_invoices():
                 "paid_to_supplier": paid_to_supplier,
                 "handling_fees": handling_fees,
                 "vat": vat,
-                "vendor_vat": vendor_vat,
                 "total_profit": total_profit,
                 "currency": currency,
             }
 
-            col_pdf_c, col_wa = st.columns([1, 1])
+            col_pdf_v, col_pdf_c, col_wa = st.columns([1, 1, 1])
+
+            with col_pdf_v:
+                if REPORTLAB_AVAILABLE:
+                    pdf_buffer = generate_invoice_pdf(invoice_data)
+                    st.download_button(
+                        label="📄 Vendor Invoice PDF",
+                        data=pdf_buffer,
+                        file_name=f"Vendor_Invoice_{invoice_no}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
 
             with col_pdf_c:
                 if REPORTLAB_AVAILABLE:
@@ -1703,18 +1590,8 @@ def show_admin():
 # MAIN APP
 # =========================================================
 
-@st.cache_resource
-def _init_database():
-    """Runs create_tables() only ONCE per server process instead of on
-    every button click / page navigation. Streamlit reruns the whole
-    script top-to-bottom on every interaction, so without this cache,
-    every single click was sending ~15 CREATE/ALTER statements to
-    Supabase before the page even rendered — a major source of lag."""
-    create_tables()
-    return True
-
 try:
-    _init_database()
+    create_tables()
 except Exception as e:
     st.error(f"Database connection error: {e}")
     st.info("Please check your database password in the code")
@@ -1753,7 +1630,7 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        pages = ["Dashboard", "Invoices", "Reports", "Treasury", "Import"]
+        pages = ["Dashboard", "Invoices", "Reports", "Vendors", "Treasury"]
         if st.session_state.current_user == "Mahmoud":
             pages.append("Admin Panel")
         pages.append("Support")
@@ -1782,10 +1659,12 @@ else:
         show_invoices()
     elif st.session_state.page == "Reports":
         show_reports()
+    elif st.session_state.page == "Vendors":
+        vendors_df = load_vendors()
+        st.markdown("# Vendors")
+        st.dataframe(vendors_df, use_container_width=True, height=500)
     elif st.session_state.page == "Treasury":
         show_treasury()
-    elif st.session_state.page == "Import":
-        show_import(get_cursor)
     elif st.session_state.page == "Admin Panel":
         show_admin()
     elif st.session_state.page == "Support":
